@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Risk Score</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html{height:auto;overflow:auto;}
+    body{width:260px;min-height:100px;height:auto;background:#111;color:#e8e8e8;font-family:'Rajdhani',sans-serif;overflow-x:hidden;overflow-y:auto;}
+    body::-webkit-scrollbar{display:none;}
+    .header{display:flex;align-items:center;gap:8px;padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.02);}
+    .logo-icon{font-size:16px;vertical-align:middle;}
+    .title{font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;}
+    .status-row{display:flex;align-items:center;gap:5px;font-size:10px;color:rgba(255,255,255,0.35);margin-top:2px;padding-left:2px;}
+    .status-dot{display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+    .status-dot.green{background:#22c55e;box-shadow:0 0 4px rgba(34,197,94,0.6);}
+    .status-dot.red{background:#ef4444;box-shadow:0 0 4px rgba(239,68,68,0.5);}
+    .status-label{letter-spacing:0.04em;}
+    .section{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}
+    .section-title{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:10px;}
+    .setting-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+    .setting-row:last-child{margin-bottom:0;}
+    .setting-label{font-size:12px;font-weight:500;color:rgba(255,255,255,0.75);}
+    .setting-desc{font-size:9px;color:rgba(255,255,255,0.25);margin-top:2px;}
+    .toggle{position:relative;width:36px;height:20px;flex-shrink:0;}
+    .toggle input{display:none;}
+    .toggle-track{position:absolute;inset:0;border-radius:10px;background:rgba(255,255,255,0.1);cursor:pointer;transition:background 0.2s;border:1px solid rgba(255,255,255,0.1);}
+    .toggle-thumb{position:absolute;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.4);top:2px;left:2px;transition:transform 0.2s,background 0.2s;}
+    .toggle input:checked+.toggle-track{background:rgba(34,197,94,0.4);border-color:rgba(34,197,94,0.4);}
+    .toggle input:checked+.toggle-track .toggle-thumb{transform:translateX(16px);background:#22c55e;}
+    .risk-guide{display:flex;flex-direction:column;gap:6px;}
+    .risk-row{display:flex;align-items:center;gap:10px;font-size:12px;}
+    .risk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+    .risk-range{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.4);width:50px;}
+    .risk-name{color:rgba(255,255,255,0.7);}
+    .expand-section{border-bottom:1px solid rgba(255,255,255,0.06);}
+    .expand-toggle{padding:10px 16px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.4);cursor:pointer;display:flex;align-items:center;gap:5px;transition:color 0.15s;}
+    .expand-toggle:hover{color:rgba(255,255,255,0.65);}
+    .expand-arrow{font-size:9px;}
+    .expand-panel{padding:0 16px 12px;}
+    .expand-item{margin-bottom:6px;font-size:10px;color:rgba(255,255,255,0.3);line-height:1.5;padding-left:12px;position:relative;}
+    .expand-item::before{content:'•';position:absolute;left:0;color:rgba(255,255,255,0.2);}
+    .expand-item:last-child{margin-bottom:0;}
+    .expand-item.no-bullet{padding-left:0;}
+    .expand-item.no-bullet::before{display:none;}
+    .expand-formula{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(255,255,255,0.45);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:5px 8px;margin-bottom:8px;}
+    .expand-label{font-size:10px;font-weight:600;color:rgba(255,255,255,0.4);margin-bottom:1px;}
+    /* Footer */
+    .footer{position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(28,14,42,0.95) 0%,rgba(18,24,48,0.95) 50%,rgba(14,28,36,0.95) 100%);border-top:1px solid rgba(120,70,200,0.18);}
+    .footer::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,rgba(140,80,220,0.05) 25%,rgba(60,180,220,0.05) 50%,rgba(220,80,120,0.05) 75%,transparent 100%);background-size:200% 100%;animation:footer-shimmer 6s linear infinite;}
+    @keyframes footer-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+    .footer-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;position:relative;z-index:1;}
+    .footer-col{display:flex;flex-direction:column;gap:2px;}
+    .footer-col-left{align-items:flex-start;}
+    .footer-col-center{align-items:center;flex:1;}
+    .footer-col-right{align-items:flex-end;}
+    .footer-label{font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(180,140,255,0.55);}
+    .footer-creator{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:rgba(130,200,255,0.5);}
+    .footer-contact-link{font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.3);text-decoration:none;display:inline-flex;align-items:center;gap:4px;transition:color 0.15s;}
+    .footer-contact-link:hover{color:rgba(255,255,255,0.55);}
+    .footer-contact-link svg{opacity:0.6;}
+    .footer-bttw-label{font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(220,120,180,0.35);cursor:help;margin-top:2px;}
+    .bttw-mini{position:relative;width:100px;height:38px;overflow:hidden;}
+    .bttw-thrower{position:absolute;left:20px;bottom:0;width:22px;height:32px;animation:bttw-throw 3s ease-in-out infinite;transform-origin:center bottom;}
+    @keyframes bttw-throw{0%,100%{transform:rotate(0deg);}22%{transform:rotate(-22deg);}32%{transform:rotate(12deg);}42%,100%{transform:rotate(0deg);}}
+    .bttw-brick{position:absolute;left:40px;bottom:24px;width:7px;height:5px;background:#c44;border-radius:0.5px;opacity:0;animation:bttw-fly 3s ease-in infinite;box-shadow:0 0 5px rgba(220,60,60,0.5);}
+    @keyframes bttw-fly{0%,28%{left:40px;bottom:24px;opacity:0;transform:rotate(0);}30%{opacity:1;}52%{left:72px;bottom:14px;opacity:1;transform:rotate(540deg);}53%{opacity:0;}100%{opacity:0;}}
+    .bttw-window{position:absolute;right:6px;bottom:3px;width:24px;height:26px;border:1.5px solid rgba(255,255,255,0.16);border-radius:1.5px;background:rgba(100,160,240,0.05);}
+    .bttw-window::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:0.5px;background:rgba(255,255,255,0.08);}
+    .bttw-window::after{content:'';position:absolute;top:50%;left:0;right:0;height:0.5px;background:rgba(255,255,255,0.08);}
+    .bttw-flash{position:absolute;right:9px;bottom:8px;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,200,0.7) 0%,rgba(255,180,60,0.3) 40%,transparent 70%);opacity:0;animation:bttw-flash 3s ease-out infinite;z-index:2;}
+    @keyframes bttw-flash{0%,51%{opacity:0;transform:scale(0.2);}53%{opacity:1;transform:scale(1.5);}60%{opacity:0;transform:scale(2.4);}100%{opacity:0;}}
+    .bttw-confetti{position:absolute;right:2px;bottom:2px;width:34px;height:30px;pointer-events:none;z-index:3;}
+    .confetti{position:absolute;width:4px;height:4px;border-radius:1px;opacity:0;animation:confetti-pop 3s ease-out infinite;}
+    .confetti:nth-child(1){background:#ff3b6f;left:14px;top:14px;--cx:-16px;--cy:-16px;--cr:400deg;width:5px;height:3px;}
+    .confetti:nth-child(2){background:#ffdd3b;left:16px;top:12px;--cx:14px;--cy:-20px;--cr:-360deg;animation-delay:0.02s;width:3px;height:5px;}
+    .confetti:nth-child(3){background:#3bddff;left:18px;top:16px;--cx:18px;--cy:-8px;--cr:320deg;animation-delay:0.04s;}
+    .confetti:nth-child(4){background:#a855f7;left:12px;top:10px;--cx:-12px;--cy:-22px;--cr:-420deg;animation-delay:0.01s;width:3px;height:5px;border-radius:3px;}
+    .confetti:nth-child(5){background:#22c55e;left:20px;top:14px;--cx:20px;--cy:-12px;--cr:460deg;animation-delay:0.05s;}
+    .confetti:nth-child(6){background:#ff8c3b;left:10px;top:16px;--cx:-20px;--cy:-6px;--cr:-280deg;animation-delay:0.03s;width:5px;height:2px;}
+    @keyframes confetti-pop{0%,51%{opacity:0;transform:translate(0,0) rotate(0deg) scale(0.3);}54%{opacity:1;transform:translate(0,0) rotate(0deg) scale(1.3);}70%{opacity:0.9;transform:translate(var(--cx),var(--cy)) rotate(var(--cr)) scale(1);}90%{opacity:0.3;transform:translate(calc(var(--cx)*1.2),calc(var(--cy)+14px)) rotate(var(--cr)) scale(0.6);}100%{opacity:0;transform:translate(calc(var(--cx)*1.3),calc(var(--cy)+24px)) rotate(var(--cr)) scale(0.2);}}
+    .expand-section .calc-section{border:none;}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title"><span class="logo-icon">♟</span> Chess Risk Score</div>
+      <div class="status-row"><span class="status-dot green"></span><span class="status-label">Chess.com</span></div>
+      <div class="status-row"><span class="status-dot green"></span><span class="status-label">Lichess</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Settings</div>
+    <div class="setting-row">
+      <div><div class="setting-label">Auto-show overlay</div><div class="setting-desc">Show on game start automatically</div></div>
+      <label class="toggle"><input type="checkbox" id="toggle-auto" checked><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-label">Rated games only</div><div class="setting-desc">Ignore unrated games in stats</div></div>
+      <label class="toggle"><input type="checkbox" id="toggle-rated" checked><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Risk Guide</div>
+    <div class="risk-guide">
+      <div class="risk-row"><div class="risk-dot" style="background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.5)"></div><div class="risk-range">0 – 25</div><div class="risk-name">Low Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.5)"></div><div class="risk-range">26 – 50</div><div class="risk-name">Moderate Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#f97316;box-shadow:0 0 6px rgba(249,115,22,0.5)"></div><div class="risk-range">51 – 75</div><div class="risk-name">High Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5)"></div><div class="risk-range">76 – 100</div><div class="risk-name">Extreme Risk</div></div>
+    </div>
+  </div>
+
+  <div class="expand-section">
+    <div class="expand-toggle" id="calc-toggle"><span class="expand-arrow" id="calc-arrow">▸</span>HOW RISK IS CALCULATED</div>
+    <div class="expand-panel" id="calc-panel" style="display:none">
+      <div class="expand-formula">Risk = AgeFactor × (0.35·OWR + 0.30·RWR + 0.35·ACC)</div>
+      <div class="expand-item no-bullet"><div class="expand-label">Overall Win Rate (OWR) — 35%</div>All-time win rate. Above 60% begins scoring, exponential above 70%.</div>
+      <div class="expand-item no-bullet"><div class="expand-label">Recent Win Rate (RWR) — 30%</div>Win rate from the last 2 months.</div>
+      <div class="expand-item no-bullet"><div class="expand-label">Accuracy Risk (ACC) — 35%</div>Blends spike frequency + consistency anomaly vs expected for format/rating.</div>
+      <div class="expand-item no-bullet"><div class="expand-label">Age Factor (multiplier)</div>&lt;7d = ×5, &lt;30d = ×3.5, &lt;90d = ×2, &gt;1yr = ×1.</div>
+    </div>
+  </div>
+
+  <div class="expand-section">
+    <div class="expand-toggle" id="disclaimer-toggle"><span class="expand-arrow" id="disclaimer-arrow">▸</span>DISCLAIMER</div>
+    <div class="expand-panel" id="disclaimer-panel" style="display:none">
+      <div class="expand-item">This extension provides risk indicators, not proof of cheating.</div>
+      <div class="expand-item">A high risk score suggests unusual patterns worth attention.</div>
+      <div class="expand-item">Players deserve the benefit of the doubt.</div>
+      <div class="expand-item">Use this tool responsibly and in good faith.</div>
+      <div class="expand-item">Report suspected cheaters through official Chess.com or Lichess channels.</div>
+    </div>
+  </div>
+
+  <div class="expand-section">
+    <div class="expand-toggle" id="privacy-toggle"><span class="expand-arrow" id="privacy-arrow">▸</span>PRIVACY &amp; SECURITY</div>
+    <div class="expand-panel" id="privacy-panel" style="display:none">
+      <div class="expand-item">No data collection — all analysis happens locally.</div>
+      <div class="expand-item">Only public Chess.com and Lichess API data is used.</div>
+      <div class="expand-item">No tracking or analytics.</div>
+      <div class="expand-item">Open source — audit the code yourself.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-row" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px">
+      <div class="footer-bttw-label" title="Brick Through The Window Media" style="line-height:1.3">BTTW<br>MEDIA</div>
+      <div class="bttw-mini" style="width:80px;height:34px">
+        <svg class="bttw-thrower" viewBox="0 0 24 34" fill="none">
+          <ellipse cx="14" cy="4.5" rx="3.8" ry="4.2" fill="rgba(40,40,40,0.9)"/>
+          <rect x="11.2" y="3.6" width="5.6" height="1.4" rx="0.7" fill="rgba(200,200,200,0.25)"/>
+          <circle cx="13" cy="4.3" r="0.5" fill="rgba(255,255,255,0.7)"/>
+          <circle cx="15" cy="4.3" r="0.5" fill="rgba(255,255,255,0.7)"/>
+          <path d="M14 8 L12 18 L16.5 17 Z" fill="rgba(255,255,255,0.3)"/>
+          <path d="M14 10 L19 4.5 L22 3" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M13 11 L8 13.5 L5.5 12.5" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M13 17.5 L9 25 L6.5 31" stroke="rgba(255,255,255,0.3)" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M15.5 17 L18 25 L20.5 31" stroke="rgba(255,255,255,0.3)" stroke-width="2.2" stroke-linecap="round"/>
+          <ellipse cx="5.8" cy="32" rx="2.8" ry="1.6" fill="rgba(255,255,255,0.25)"/>
+          <ellipse cx="21.2" cy="32" rx="2.8" ry="1.6" fill="rgba(255,255,255,0.25)"/>
+        </svg>
+        <div class="bttw-brick"></div>
+        <div class="bttw-window"></div>
+        <div class="bttw-flash"></div>
+        <div class="bttw-confetti"><div class="confetti"></div><div class="confetti"></div><div class="confetti"></div><div class="confetti"></div><div class="confetti"></div><div class="confetti"></div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <div class="footer-creator">CREATED BY AZ_93</div>
+        <a class="footer-contact-link" href="mailto:azec.1993@gmail.com" title="Contact az_93">
+          <svg viewBox="0 0 16 12" width="10" height="8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="14" height="10" rx="1.5"/><polyline points="1,1 8,7 15,1"/></svg>
+          CONTACT
+        </a>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
