@@ -3,7 +3,7 @@
 // ============================================================
 
 class OverlayUI {
-  constructor() { this.el = null; this.isDragging = false; this.dragOffset = { x: 0, y: 0 }; this.VERSION = '1.1.0'; this._lastResult = null; this._lastArgs = null; }
+  constructor() { this.el = null; this.isDragging = false; this.dragOffset = { x: 0, y: 0 }; this.VERSION = '1.2.0'; this._lastResult = null; this._lastArgs = null; }
   create() { if (this.el) return; this.el = document.createElement('div'); this.el.id = 'chess-risk-overlay'; this.el.classList.add('hidden'); document.body.appendChild(this.el); this._makeDraggable(); }
   show() { if (!this.el) this.create(); requestAnimationFrame(() => { this.el.classList.remove('hidden'); this.el.classList.add('visible'); }); }
   hide() { if (!this.el) return; this.el.classList.add('hidden'); this.el.classList.remove('visible'); }

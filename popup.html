@@ -11,13 +11,8 @@
     body{width:260px;min-height:100px;height:auto;background:#111;color:#e8e8e8;font-family:'Rajdhani',sans-serif;overflow-x:hidden;overflow-y:auto;}
     body::-webkit-scrollbar{display:none;}
     .header{display:flex;align-items:center;gap:8px;padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.02);}
-    .logo-icon{font-size:16px;vertical-align:middle;}
+    .logo-icon{width:18px;height:18px;vertical-align:middle;margin-right:2px;}
     .title{font-size:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;}
-    .status-row{display:flex;align-items:center;gap:5px;font-size:10px;color:rgba(255,255,255,0.35);margin-top:2px;padding-left:2px;}
-    .status-dot{display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;}
-    .status-dot.green{background:#22c55e;box-shadow:0 0 4px rgba(34,197,94,0.6);}
-    .status-dot.red{background:#ef4444;box-shadow:0 0 4px rgba(239,68,68,0.5);}
-    .status-label{letter-spacing:0.04em;}
     .section{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}
     .section-title{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:10px;}
     .setting-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
@@ -34,8 +29,19 @@
     .risk-row{display:flex;align-items:center;gap:10px;font-size:12px;}
     .risk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
     .risk-range{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.4);width:50px;}
-    .risk-name{color:rgba(255,255,255,0.7);}
+    .risk-name{color:rgba(255,255,255,0.7);cursor:help;}
     .expand-section{border-bottom:1px solid rgba(255,255,255,0.06);}
+    .embed-cog{font-size:13px;color:rgba(255,255,255,0.3);cursor:pointer;transition:color 0.15s,transform 0.3s;user-select:none;}
+    .embed-cog:hover{color:rgba(255,255,255,0.7);}
+    .embed-cog.open{color:rgba(34,197,94,0.7);transform:rotate(90deg);}
+    .embed-settings{padding:6px 12px 10px;margin:-4px 0 8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;}
+    .embed-settings .setting-row{margin-bottom:8px;}
+    .embed-settings .setting-row:last-child{margin-bottom:0;}
+    .embed-settings .setting-label{font-size:11px;}
+    .embed-settings .setting-desc{font-size:8px;}
+    .embed-select{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:3px 6px;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:500;cursor:pointer;outline:none;}
+    .embed-select:focus{border-color:rgba(34,197,94,0.4);}
+    .embed-select option{background:#1a1a1a;color:#e8e8e8;}
     .expand-toggle{padding:10px 16px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.4);cursor:pointer;display:flex;align-items:center;gap:5px;transition:color 0.15s;}
     .expand-toggle:hover{color:rgba(255,255,255,0.65);}
     .expand-arrow{font-size:9px;}
@@ -87,9 +93,7 @@
 <body>
   <div class="header">
     <div>
-      <div class="title"><span class="logo-icon">♟</span> Chess Risk Score <span style="font-size:8px;font-weight:400;color:rgba(255,255,255,0.2);text-transform:none;letter-spacing:0.04em">v1.1.0</span></div>
-      <div class="status-row"><span class="status-dot red" id="dot-chesscom"></span><span class="status-label">Chess.com</span></div>
-      <div class="status-row"><span class="status-dot red" id="dot-lichess"></span><span class="status-label">Lichess</span></div>
+      <div class="title"><img src="icons/icon32.png" class="logo-icon" alt=""> Chess Risk Score <span style="font-size:8px;font-weight:400;color:rgba(255,255,255,0.2);text-transform:none;letter-spacing:0.04em">v1.2.0</span></div>
     </div>
   </div>
 
@@ -100,10 +104,6 @@
       <label class="toggle"><input type="checkbox" id="toggle-auto" checked><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
     </div>
     <div class="setting-row">
-      <div><div class="setting-label">Rated games only</div><div class="setting-desc">Ignore unrated games in stats</div></div>
-      <label class="toggle"><input type="checkbox" id="toggle-rated" checked><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
-    </div>
-    <div class="setting-row">
       <div><div class="setting-label" title="Only shows the risk score circle during the game - no detailed stats until you click for more">Semi-zen mode ⓘ</div><div class="setting-desc">Score circle only during game</div></div>
       <label class="toggle"><input type="checkbox" id="toggle-semizen"><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
     </div>
@@ -111,15 +111,47 @@
       <div><div class="setting-label" title="Hides the risk score completely until the game is over - play without bias, review after">Full zen mode ⓘ</div><div class="setting-desc">Hidden until game ends</div></div>
       <label class="toggle"><input type="checkbox" id="toggle-zen"><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
     </div>
+    <div class="setting-row">
+      <div><div class="setting-label" title="Injects W/L/D stats next to player usernames on the game page">Embedded stats ⓘ</div><div class="setting-desc">Show W/L/D next to usernames</div></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="embed-cog" id="embed-cog" title="Embedded stats settings">⚙</span>
+        <label class="toggle"><input type="checkbox" id="toggle-embedstats"><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+      </div>
+    </div>
+    <div class="embed-settings" id="embed-settings" style="display:none">
+      <div class="setting-row">
+        <div><div class="setting-label">Time interval</div></div>
+        <select id="select-interval" class="embed-select">
+          <option value="3600">1 hour</option>
+          <option value="21600">6 hours</option>
+          <option value="43200">12 hours</option>
+          <option value="86400" selected>24 hours</option>
+          <option value="259200">3 days</option>
+          <option value="604800">1 week</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div><div class="setting-label">Hide own stats</div><div class="setting-desc">Only show opponent's stats</div></div>
+        <label class="toggle"><input type="checkbox" id="toggle-hideown"><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+      </div>
+      <div class="setting-row">
+        <div><div class="setting-label">Color highlighting</div><div class="setting-desc">Green/red/grey W/L/D numbers</div></div>
+        <label class="toggle"><input type="checkbox" id="toggle-colorhl" checked><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><div class="setting-label" title="Shows the risk score circle next to your opponent's username on the game page — works with any mode">Embedded risk score ⓘ</div><div class="setting-desc">Score circle next to username</div></div>
+      <label class="toggle"><input type="checkbox" id="toggle-embedrisk"><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
+    </div>
   </div>
 
   <div class="section">
     <div class="section-title">Risk Guide</div>
     <div class="risk-guide">
-      <div class="risk-row"><div class="risk-dot" style="background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.5)"></div><div class="risk-range">0 – 25</div><div class="risk-name">Low Risk</div></div>
-      <div class="risk-row"><div class="risk-dot" style="background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.5)"></div><div class="risk-range">26 – 50</div><div class="risk-name">Moderate Risk</div></div>
-      <div class="risk-row"><div class="risk-dot" style="background:#f97316;box-shadow:0 0 6px rgba(249,115,22,0.5)"></div><div class="risk-range">51 – 75</div><div class="risk-name">High Risk</div></div>
-      <div class="risk-row"><div class="risk-dot" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5)"></div><div class="risk-range">76 – 100</div><div class="risk-name">Extreme Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.5)"></div><div class="risk-range">0 – 25</div><div class="risk-name" title="Normal player patterns">Low Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,0.5)"></div><div class="risk-range">26 – 50</div><div class="risk-name" title="Some elevated signals">Moderate Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#f97316;box-shadow:0 0 6px rgba(249,115,22,0.5)"></div><div class="risk-range">51 – 75</div><div class="risk-name" title="Multiple concerning indicators">High Risk</div></div>
+      <div class="risk-row"><div class="risk-dot" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5)"></div><div class="risk-range">76 – 100</div><div class="risk-name" title="Strongly unusual patterns">Extreme Risk</div></div>
     </div>
   </div>
 

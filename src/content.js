@@ -9,13 +9,12 @@
   const cache = new Map();
   let viewingSelf = false;
   let platform = 'chesscom';
-  let settings = { autoShow: true, ratedOnly: true, zenMode: false, semiZenMode: false };
-  let pendingZenResult = null; // Stores result during zen mode
+  let settings = { autoShow: true, ratedOnly: true, zenMode: false, semiZenMode: false, embeddedRiskScore: false, embeddedStats: false, embedTimeInterval: 86400, embedHideOwnStats: false, embedColorHighlight: true };
+  let pendingZenResult = null;
 
-  // Load settings from storage
   async function loadSettings() {
     try {
-      const s = await chrome.storage.sync.get({ autoShow: true, ratedOnly: true, zenMode: false, semiZenMode: false });
+      const s = await chrome.storage.sync.get({ autoShow: true, ratedOnly: true, zenMode: false, semiZenMode: false, embeddedRiskScore: false, embeddedStats: false, embedTimeInterval: 86400, embedHideOwnStats: false, embedColorHighlight: true });
       settings = s;
     } catch (e) {}
   }
@@ -187,7 +186,7 @@
   }
 
   function onOpponentDetected(username) {
-    if (!settings.autoShow) return; // Auto-show is off — don't show
+    if (!settings.autoShow && !settings.embeddedStats && !settings.embeddedRiskScore) return;
     analyzePlayer(username, false);
   }
 
@@ -210,8 +209,8 @@
     // Detect format from DOM as a hint (may be wrong)
     let domFormat = detectTimeFormat();
 
-    // Don't show loading in full zen mode
-    if (!settings.zenMode) overlay.showLoading(username);
+    // Don't show loading in zen mode or when autoShow is off (embedded-only mode)
+    if (!settings.zenMode && settings.autoShow) overlay.showLoading(username);
 
     try {
       const data = await api.fetchAllData(username);
@@ -242,14 +241,42 @@
       result._scoredFormat = currentFormat;
       cache.set(key, result);
 
-      // Zen Mode: store result, don't show until game ends
+      // Embedded elements — independent of overlay mode
+      const embedOpts = { format: currentFormat, timeInterval: settings.embedTimeInterval, colorHighlight: settings.embedColorHighlight };
+      if (settings.embeddedRiskScore) {
+        if (!isSelf || !settings.embedHideOwnStats) {
+          const side = isSelf ? 'bottom' : 'top';
+          injector.injectScoreCircle(result.score, result.level, side);
+        }
+      }
+      if (settings.embeddedStats) {
+        if (!isSelf || !settings.embedHideOwnStats) {
+          const side = isSelf ? 'bottom' : 'top';
+          const filtered = injector.filterByTime(result.insights, data.recentGames, username, embedOpts);
+          injector.injectStats(username, filtered, side, embedOpts);
+        }
+      }
+
+      // If this is an opponent analysis and embedded features are on, also analyze self
+      if (!isSelf && !settings.embedHideOwnStats && (settings.embeddedStats || settings.embeddedRiskScore)) {
+        const selfName = detector._getMyUsername();
+        if (selfName && !cache.has('_self_embedded_' + selfName.toLowerCase())) {
+          cache.set('_self_embedded_' + selfName.toLowerCase(), true);
+          analyzePlayerEmbed(selfName, currentFormat);
+        }
+      }
+
+      // Skip overlay display if autoShow is off (embedded-only mode)
+      if (!settings.autoShow) return;
+
+      // Zen Mode: store result, don't show overlay until game ends
       if (settings.zenMode) {
         pendingZenResult = { username, result, isSelf, oppName, myName };
         overlay.hide();
         return;
       }
 
-      // Semi-Zen Mode: show only the score ring
+      // Semi-Zen Mode: show only the score ring in overlay
       if (settings.semiZenMode) {
         overlay.showSemiZen(username, result, oppName, myName);
         return;
@@ -257,10 +284,36 @@
 
       // Normal mode: show full result
       overlay.showResult(username, result, isSelf, oppName, myName);
-      if (!isSelf) injector.injectOpponentStats(username, result.insights);
     } catch (err) {
       console.error('[ChessRisk]', err);
-      if (!settings.zenMode) overlay.showError(username, err.message || 'Failed to fetch player data');
+      if (!settings.zenMode && settings.autoShow) overlay.showError(username, err.message || 'Failed to fetch player data');
+    }
+  }
+
+  // Lightweight analysis for embedded stats/risk on the self player (bottom board)
+  async function analyzePlayerEmbed(username, detectedFormat) {
+    if (!username || username.length < 2) return;
+    try {
+      const data = await api.fetchAllData(username);
+      let domFormat = detectTimeFormat();
+      let apiFormat = null;
+      if (data.recentGames && data.recentGames.length > 0) {
+        const sorted = [...data.recentGames].sort((a, b) => (b.end_time || 0) - (a.end_time || 0));
+        if (sorted[0]?.time_class) apiFormat = sorted[0].time_class;
+      }
+      const currentFormat = detectedFormat || apiFormat || domFormat || null;
+      const result = calculator.calculate(data, currentFormat, platform);
+      const embedOpts = { format: currentFormat, timeInterval: settings.embedTimeInterval, colorHighlight: settings.embedColorHighlight };
+
+      if (settings.embeddedRiskScore) {
+        injector.injectScoreCircle(result.score, result.level, 'bottom');
+      }
+      if (settings.embeddedStats) {
+        const filtered = injector.filterByTime(result.insights, data.recentGames, username, embedOpts);
+        injector.injectStats(username, filtered, 'bottom', embedOpts);
+      }
+    } catch (err) {
+      console.error('[ChessRisk] Self embed error:', err);
     }
   }
 

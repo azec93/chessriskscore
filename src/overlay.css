@@ -688,24 +688,35 @@
 }
 
 /* ============================================================
+   EMBEDDED SCORE CIRCLE — injected next to username
+   ============================================================ */
+
+.crs-embed-score {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.3em;
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* ============================================================
    INSIGHTS BADGE — injected next to username in chess.com DOM
    ============================================================ */
 
 .crs-insights-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  background: rgba(10, 10, 10, 0.85);
+  gap: 0.25em;
+  padding: 0.15em 0.5em;
+  background: var(--color-bg-opaque, #302e2b);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 4px;
+  border-radius: 0.25em;
   font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 0.85em;
   font-weight: 500;
   line-height: 1;
   vertical-align: middle;
-  margin-left: 6px;
-  backdrop-filter: blur(4px);
+  margin-left: 0.4em;
   cursor: default;
   white-space: nowrap;
   z-index: 9999;
@@ -715,8 +726,7 @@
 .crs-ins-w   { color: #6b9438; font-weight: 700; }
 .crs-ins-l   { color: #c23b22; font-weight: 700; }
 .crs-ins-d   { color: #888;    font-weight: 600; }
-.crs-ins-acc { color: #f59e0b; font-size: 10px; margin-left: 2px; }
-.crs-ins-fmt { color: rgba(255,255,255,0.3); font-size: 9px; margin-left: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.crs-ins-plain { color: rgba(255,255,255,0.7); font-weight: 600; }
 .crs-ins-sep { color: rgba(255,255,255,0.2); }
 
 /* ── Insights table inside the overlay ── */
@@ -775,6 +785,9 @@
   text-align: center;
   padding: 4px 0;
 }
+#chess-risk-overlay.crs-theme-light .crs-it-no-data {
+  color: rgba(0,0,0,0.3);
+}
 
 /* ── Rating columns in insights table ──────────────────────── */
 .crs-it-rating {
@@ -794,9 +807,12 @@
   font-weight: 600;
 }
 
-/* ── Peak rating in meta bar — white ────────────────────────── */
+/* ── Peak rating in meta bar ────────────────────────────────── */
 .crs-peak {
-  color: rgba(255,255,255,0.85) !important;
+  color: rgba(255,255,255,0.85);
+}
+#chess-risk-overlay.crs-theme-light .crs-peak {
+  color: var(--crs-text);
 }
 
 /* ── 3-column meta bar ─────────────────────────────────────── */
@@ -916,6 +932,15 @@
 }
 #chess-risk-overlay.crs-theme-light .crs-it-rating.cur {
   color: var(--crs-text-dim);
+}
+#chess-risk-overlay.crs-theme-light .crs-it-rating.peak {
+  color: var(--crs-text);
+}
+#chess-risk-overlay.crs-theme-light .crs-it-acc {
+  color: var(--crs-text);
+}
+#chess-risk-overlay.crs-theme-light .crs-it-wpct {
+  color: var(--crs-text);
 }
 #chess-risk-overlay.crs-theme-light .crs-meta {
   background: var(--crs-meta-bg);

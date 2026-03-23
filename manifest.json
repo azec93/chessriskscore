@@ -1,9 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Chess Risk Score",
-  "version": "1.1.0",
-  "description": "Opponent risk overlay for Chess.com & Lichess. Win rates, accuracy analysis, account age — all from public data.",
-  "permissions": ["storage"],
+  "version": "1.2.0",
+  "description": "Opponent risk overlay for Chess.com & Lichess. Win rates, accuracy analysis, account age \u2014 all from public data.",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://www.chess.com/*",
     "https://chess.com/*",
@@ -30,7 +32,9 @@
         "src/lichessDetector.js",
         "src/content.js"
       ],
-      "css": ["src/overlay.css"],
+      "css": [
+        "src/overlay.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -45,7 +49,8 @@
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "128": "icons/icon128.png",
+    "32": "icons/icon32.png"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self';"
