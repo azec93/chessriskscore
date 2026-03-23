@@ -46,7 +46,7 @@ Risk = AgeFactor × (0.35 × OWR + 0.30 × RWR + 0.35 × ACC) × RatingDampener
 ## Installation
 
 ### From Chrome Web Store
-*(Link coming soon)*
+(https://chromewebstore.google.com/detail/chess-risk-score/ookpbnahncodokhafpfgamlkfjdmfjjo?authuser=1&hl=en)
 
 ### Manual Installation (Developer Mode)
 1. Download or clone this repository
