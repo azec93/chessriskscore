@@ -1,111 +1,94 @@
 # ♟ Chess Risk Score
 
-**Instant opponent risk assessment for Chess.com & Lichess.**
+**Opponent risk overlay for Chess.com & Lichess, plus stats for any player.**
 
-A browser extension that automatically detects your opponent and calculates a composite risk score based on win rates, accuracy analysis, and account age — all from publicly available data.
+A browser extension that detects your opponent and shows a 0–100 risk score with the numbers behind it, all from public data and calculated in your browser.
 
-![Chess Risk Score](https://img.shields.io/badge/version-1.0.0-blue) ![Chrome Web Store](https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge-green) ![License](https://img.shields.io/badge/license-MIT-brightgreen)
+![Version](https://img.shields.io/badge/version-1.8.0-blue) ![Platforms](https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge%20%7C%20Firefox-green) ![License](https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20engine-brightgreen)
 
 ---
 
 ## Features
 
-- **Works on Chess.com AND Lichess** — auto-detects which platform you're on
-- **Auto-detects opponent** — triggers when a game starts or when spectating
-- **Composite risk score (0–100)** — weighted blend of multiple signals
-- **Format-specific analysis** — bullet, blitz, and rapid scored independently
-- **Toggle between opponent & self** — check your own stats too
-- **Draggable overlay** — position it wherever you like
-- **Dark & light theme support** — matches the site theme
-- **Keyboard shortcut** — Alt+C to manually trigger
-- **100% private** — zero data collection, all analysis happens locally
+- **Works on Chess.com and Lichess:** detects the opponent when a game starts or when you watch one
+- **Risk score (0–100):** with a plain label and the full calculation in the overlay
+- **Per-format table:** wins, losses, draws, win rate, accuracy, current and peak rating
+- **My stats (new in 1.8):** look up any Chess.com or Lichess player
+  - **Insights:** what is and isn't holding you back, each compared with typical players at your rating
+  - **Form:** recent results and rating
+  - **Skills:** every game checked by Stockfish in your browser (opening, tactics, endgame, clock)
+  - **Cheaters:** how many of your opponents had their accounts closed for fair play
+- **Sound alerts:** Harp, Low bell or a Russian GM voice when a risky opponent loads (off by default)
+- **Report button:** opens Chess.com's report window, or reports on Lichess in one click
+- **Stats beside usernames,** zen modes, a draggable overlay, and Alt+C to trigger it by hand
+- **Private:** no data collection, no tracking, no servers of ours
 
-## How Risk is Calculated
+## How risk is calculated
 
-```
-Risk = AgeFactor × (0.35 × OWR + 0.30 × RWR + 0.35 × ACC) × RatingDampener
-```
+- **Chess.com accounts older than 60 days:** a gradient-boosted model trained on public data from closed and normal accounts (bullet, blitz and rapid).
+- **Newer Chess.com accounts and Lichess:** a rule-based score from win rates, accuracy, account age and rating.
+- **Cut-offs are set per rating group,** so a strong player isn't flagged just for being strong. 25 marks the top 2% of normal long-time accounts, 50 the top 0.5%, and 75 the top 0.1%.
 
-| Component | Weight | Description |
-|-----------|--------|-------------|
-| **Overall Win Rate (OWR)** | 35% | All-time win percentage. Above 60% begins contributing to risk. |
-| **Recent Win Rate (RWR)** | 30% | Last 2 months. Catches players who recently started using assistance. |
-| **Accuracy Risk (ACC)** | 35% | Research-calibrated thresholds per rating band and time format. |
-| **Age Factor** | Multiplier | New accounts get up to ×5 multiplier. Over 1 year = ×1. |
-| **Rating Dampener** | Multiplier | High-rated players with many games get reduced risk scores. |
+The popup's **Guide** page explains each part, and the overlay shows the full breakdown for every player.
 
-## Risk Levels
+## Risk levels
 
-| Score | Level | Meaning |
-|-------|-------|---------|
-| 0–25 | 🟢 Low Risk | Normal player patterns |
-| 26–50 | 🟡 Moderate Risk | Some elevated signals |
-| 51–75 | 🟠 High Risk | Multiple concerning indicators |
-| 76–100 | 🔴 Extreme Risk | Strongly unusual patterns |
+| Score | Level |
+|-------|-------|
+| 0–24 | Low |
+| 25–49 | Moderate |
+| 50–74 | High |
+| 75–100 | Extreme |
 
 ## Installation
 
-### From Chrome Web Store
-(https://chromewebstore.google.com/detail/chess-risk-score/ookpbnahncodokhafpfgamlkfjdmfjjo?authuser=1&hl=en)
+### From the stores
+- Chrome Web Store: https://chromewebstore.google.com/detail/chess-risk-score/ookpbnahncodokhafpfgamlkfjdmfjjo
+- Firefox Add-ons: search "Chess Risk Score"
 
-### Manual Installation (Developer Mode)
-1. Download or clone this repository
-2. Open `chrome://extensions` in Chrome/Brave/Edge
-3. Enable "Developer mode" (toggle in top right)
-4. Click "Load unpacked" and select the repository folder
-5. Navigate to Chess.com or Lichess and start a game
+### Manual installation (developer mode)
+1. Download or clone this repository.
+2. Open `chrome://extensions` in Chrome, Brave or Edge.
+3. Turn on "Developer mode" (top right).
+4. Click "Load unpacked" and pick the repository folder.
+5. Open a game on Chess.com or Lichess.
 
-## Accuracy Calibration
-
-Accuracy thresholds are based on measured CAPS2 data from thousands of games across rating bands:
-
-| Rating | Bullet Expected | Blitz Expected | Rapid Expected |
-|--------|----------------|----------------|----------------|
-| <1000 | 76% | 76% | 75% |
-| <1500 | 79% | 80% | 80% |
-| <2000 | 82% | 83% | 84% |
-| <2500 | 85% | 86% | 88% |
-| 3000+ | 89% | 89% | 92% |
-
-Lichess uses ACPL-to-accuracy conversion with thresholds ~3–4% lower than Chess.com CAPS2.
-
-## File Structure
+## File structure
 
 ```
-chess-risk-score/
-├── manifest.json          # Extension manifest (v3)
-├── popup.html             # Extension popup UI
-├── popup.js               # Popup logic & settings
-├── icons/                 # Extension icons (16/48/128px)
-├── src/
-│   ├── config.js          # Scoring constants & accuracy tables
-│   ├── api.js             # Chess.com API client
-│   ├── lichessApi.js      # Lichess API client (ACPL→accuracy)
-│   ├── riskCalculator.js  # Core scoring engine
-│   ├── detector.js        # Chess.com opponent detection
-│   ├── lichessDetector.js # Lichess opponent detection
-│   ├── overlay.js         # Game overlay UI
-│   ├── overlay.css        # Overlay styles
-│   ├── insights.js        # W/L/D badge injector
-│   ├── content.js         # Content script entry point
-│   └── background.js      # Service worker
-├── PRIVACY_POLICY.md      # Privacy policy
-└── README.md              # This file
+├── manifest.json            Extension manifest (MV3)
+├── popup.html / popup.js    Settings, Guide, About
+├── history-ui.js            My stats page
+├── history-core.js          My stats: game scan and tallies
+├── skills-core.js           Skills: turns engine output into per-game numbers
+├── skills-host.html         Offscreen page that runs the engine (Chrome)
+├── sounds/                  Russian GM voice clips (Piper TTS, CC0 voice)
+├── vendor/stockfish/        Stockfish 19 Lite, unmodified (GPL-3.0)
+└── src/
+    ├── config.js, api.js, lichessApi.js          API clients
+    ├── riskCalculator*.js, riskModelV12.js       Scoring
+    ├── detector.js, lichessDetector.js           Opponent detection
+    ├── overlay.js, overlay.css, overlayStyle.js  Overlay
+    ├── insights.js                               Stats beside usernames
+    ├── report.js, sound.js                       Report button, sound alerts
+    ├── historyEngine.js, histBridge.js           My stats scan (background)
+    ├── skillsEngine.js, skillsHost*.js, skillsBench.js   Engine runs and benchmarks
+    ├── content.js                                Content script entry point
+    └── background.js                             Service worker / background page
 ```
 
 ## Privacy
 
-- **No data collection** — all analysis happens locally in your browser
-- **No tracking or analytics** — we don't know who uses the extension
-- **Only public APIs** — same data available to any web browser
-- **No authentication** — no accounts, no logins, no tokens
-- **Open source** — audit every line of code yourself
+- **No data collection.** All analysis happens in your browser.
+- **No tracking or analytics.**
+- **Public APIs only:** Chess.com and Lichess, the same data any browser can see.
+- **Open source:** audit every line yourself.
 
-See [PRIVACY_POLICY.md](PRIVACY_POLICY.md) for the full privacy policy.
+See [PRIVACY_POLICY.md](PRIVACY_POLICY.md) for the full policy.
 
 ## Disclaimer
 
-This extension provides **risk indicators, not proof of cheating**. A high risk score suggests unusual patterns worth attention — players deserve the benefit of the doubt. Use this tool responsibly and in good faith. Report suspected cheaters through official Chess.com or Lichess channels.
+The score is a **risk indicator, not proof of cheating**. Most accounts with a high score are honest players on a good run. Report suspected cheating through the official Chess.com or Lichess channels.
 
 ## Credits
 
@@ -113,4 +96,6 @@ Created by **az_93** · BTTW Media
 
 ## License
 
-[MIT](LICENSE)
+The extension's own code is [MIT](LICENSE).
+
+It bundles **Stockfish 19 Lite** (from [Stockfish.js](https://github.com/nmrugg/stockfish.js), npm `stockfish` 19.0.1) unmodified in `vendor/stockfish/`. That is licensed under the **GNU GPL v3** ([vendor/stockfish/Copying.txt](vendor/stockfish/Copying.txt)), so the extension as distributed, with the engine, is covered by the GPL v3. Stockfish: https://github.com/official-stockfish/Stockfish

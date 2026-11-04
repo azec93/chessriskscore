@@ -4,15 +4,20 @@
 // ============================================================
 
 class LichessOpponentDetector {
-  constructor(onDetected, onGameEnd) {
+  constructor(onDetected, onGameEnd, onNavigate) {
     this.onDetected = onDetected;
     this.onGameEnd = onGameEnd;
+    this.onNavigate = onNavigate;
     this.currentOpponent = null;
     this.observer = null;
+    this._observerActive = false;
     this.pollTimer = null;
+    this.urlTimer = null;
     this.debounce = null;
     this.lastUrl = location.href;
+    this.lastPath = location.pathname;
     this._active = false;
+    this._analyzedUser = null; // one-shot lock for analysis pages (by username)
     this._timing = CONFIG?.DETECTION || {
       INITIAL_CHECK_DELAY: 200, POLL_INTERVAL: 600,
       MUTATION_DEBOUNCE: 250, URL_WATCH_INTERVAL: 300, URL_CHANGE_DELAY: 800,
@@ -20,45 +25,95 @@ class LichessOpponentDetector {
   }
 
   start() {
+    if (this._active) return; // guard against double-start
     this._active = true;
-    this.observer = new MutationObserver(() => {
-      clearTimeout(this.debounce);
-      this.debounce = setTimeout(() => { if (this._active) this._check(); }, this._timing.MUTATION_DEBOUNCE);
-    });
-    this.observer.observe(document.body, { childList: true, subtree: true });
+    this._connectObserver();
     this.pollTimer = setInterval(() => { if (this._active) this._check(); }, this._timing.POLL_INTERVAL);
-    setInterval(() => {
+    // Pathname-based nav watch (stepping analysis moves rewrites query/hash, not path)
+    this.urlTimer = setInterval(() => {
       if (!this._active) return;
-      if (location.href !== this.lastUrl) {
+      if (location.pathname !== this.lastPath) {
+        this.lastPath = location.pathname;
         this.lastUrl = location.href;
+        this._prevOpponent = this.currentOpponent ? this.currentOpponent.toLowerCase() : null;
+        this._navAt = Date.now();
         this.currentOpponent = null;
+        this._analyzedUser = null;
+        this._connectObserver();
+        this.onNavigate?.();
         setTimeout(() => this._check(), this._timing.URL_CHANGE_DELAY);
       }
     }, this._timing.URL_WATCH_INTERVAL);
     setTimeout(() => this._check(), this._timing.INITIAL_CHECK_DELAY);
   }
 
+  // Observer is attached only while we still need to detect; polling backstops it.
+  _connectObserver() {
+    if (this._observerActive) return;
+    if (!this.observer) {
+      this.observer = new MutationObserver(() => {
+        if (this.debounce) return;   // throttle: a pending check is not pushed back by later mutations
+        this.debounce = setTimeout(() => { this.debounce = null; if (this._active) this._check(); }, this._timing.MUTATION_DEBOUNCE);
+      });
+    }
+    this.observer.observe(document.body, { childList: true, subtree: true });
+    this._observerActive = true;
+  }
+  _disconnectObserver() {
+    if (!this._observerActive) return;
+    if (this.observer) this.observer.disconnect();
+    clearTimeout(this.debounce); this.debounce = null;
+    this._observerActive = false;
+  }
+
   stop() {
     this._active = false;
-    if (this.observer) { this.observer.disconnect(); this.observer = null; }
+    this._disconnectObserver();
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    if (this.urlTimer)  { clearInterval(this.urlTimer);  this.urlTimer = null; }
   }
 
   _isGamePage() {
-    return /lichess\.org\/[a-zA-Z0-9]{8,12}(\/|$)/.test(location.href) ||
+    const url = location.href;
+    if (/lichess\.org\/analysis/.test(url)) return false;
+    return /lichess\.org\/[a-zA-Z0-9]{8,12}(\/|$)/.test(url) ||
       !!document.querySelector('.round__app, cg-board');
   }
 
+  // Analysis board — show once, don't re-run per move
+  _isAnalysisPage() {
+    return /lichess\.org\/analysis/.test(location.href);
+  }
+
   _check() {
-    if (!this._isGamePage()) {
+    const analysis = this._isAnalysisPage();
+    if (!analysis) this._analyzedUser = null;
+
+    if (!analysis && !this._isGamePage()) {
+      this._disconnectObserver();
       if (this.currentOpponent) { this.currentOpponent = null; this.onGameEnd?.(); }
       return;
     }
+
+    // Already detected for this game/analysis → stop watching the DOM until navigation.
+    if (analysis ? this._analyzedUser : this.currentOpponent) { this._disconnectObserver(); return; }
+
+    // Still looking — keep the observer on for fast detection.
+    this._connectObserver();
+
     const username = this._findOpponent();
     if (!username) return;
-    if (username.toLowerCase() === this.currentOpponent?.toLowerCase()) return;
+    // Just navigated and the page still shows the previous opponent: wait for it to settle.
+    if (this._prevOpponent && username.toLowerCase() === this._prevOpponent && Date.now() - (this._navAt || 0) < this._timing.URL_CHANGE_DELAY - 30) return;
+
+    if (analysis) {
+      // Wait for both player names before locking so the name tabs render correctly.
+      if (!this._getMyUsername()) return;
+      this._analyzedUser = username;
+    }
     this.currentOpponent = username;
     this.onDetected(username);
+    this._disconnectObserver(); // detected — no need to keep watching
   }
 
   _getMyUsername() {

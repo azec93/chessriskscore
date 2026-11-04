@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Chess Risk Score",
-  "version": "1.2.0",
-  "description": "Opponent risk overlay for Chess.com & Lichess. Win rates, accuracy analysis, account age \u2014 all from public data.",
+  "version": "1.8.0",
+  "description": "Opponent risk overlay for Chess.com & Lichess. Win rates, accuracy analysis and account age, all from public data.",
   "permissions": [
-    "storage"
+    "storage",
+    "offscreen"
   ],
   "host_permissions": [
     "https://www.chess.com/*",
@@ -26,16 +27,23 @@
         "src/api.js",
         "src/lichessApi.js",
         "src/riskCalculator.js",
+        "src/riskCalculatorV10.js",
+        "src/riskModelV12.js",
+        "src/riskCalculatorV11.js",
+        "src/report.js",
+        "src/histBridge.js",
         "src/insights.js",
+        "src/overlayStyle.js",
         "src/overlay.js",
         "src/detector.js",
         "src/lichessDetector.js",
+        "src/sound.js",
         "src/content.js"
       ],
       "css": [
         "src/overlay.css"
       ],
-      "run_at": "document_idle",
+      "run_at": "document_end",
       "all_frames": false
     }
   ],
@@ -44,15 +52,40 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Chess Risk Score"
+    "default_title": "Chess Risk Score",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "icons": {
     "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
     "48": "icons/icon48.png",
-    "128": "icons/icon128.png",
-    "32": "icons/icon32.png"
+    "128": "icons/icon128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self';"
-  }
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "popup.html",
+        "icons/icon32.png",
+        "icons/icon48.png",
+        "sounds/gm-low.wav",
+        "sounds/gm-mod.wav",
+        "sounds/gm-high.wav",
+        "sounds/gm-ext.wav"
+      ],
+      "matches": [
+        "https://www.chess.com/*",
+        "https://chess.com/*",
+        "https://lichess.org/*",
+        "https://www.lichess.org/*"
+      ]
+    }
+  ]
 }

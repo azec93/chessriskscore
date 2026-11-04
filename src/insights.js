@@ -1,83 +1,104 @@
 // ============================================================
-// INSIGHTS INJECTOR
-// Injects W/L/D stats directly into the chess.com / lichess
-// player username elements (inspired by chess-com-insights)
+// INSIGHTS INJECTOR v2
+// Injects the score ring and a W/L/D chip beside the player
+// usernames on chess.com / lichess.
+//
+// v2 fixes
+//  - the chip always shows the chosen time interval (it used to fall back to
+//    all-time totals across every format when the interval had no games)
+//  - only rated standard games are counted, like the overlay table
+//  - pieces are re-attached if the site re-renders the player bar
+//  - ring always sits before the chip
 // ============================================================
 
 class InsightsInjector {
   constructor() {
-    this._injected = new Map();
+    this._injected = new Map();   // key ('stats-top', 'score-bottom', ...) -> element
+    this._keepAlive = null;
   }
 
-  // Inject stats badge next to a player's username element
-  // opts: { format, timeInterval, colorHighlight }
-  injectStats(username, insights, side, opts = {}) {
+  // ── placement ─────────────────────────────────────────────
+  _attach(key, side, node) {
     const el = this._findUsernameElement(side);
-    if (!el) return;
+    const parent = el && el.parentElement;
+    if (!parent) return false;
+    const isScore = key.startsWith('score-');
+    const chip = parent.querySelector(`.crs-insights-badge[data-side="${side}"]`);
+    if (isScore && chip && chip.parentElement === parent) parent.insertBefore(node, chip);   // ring before chip
+    else parent.appendChild(node);
+    this._injected.set(key, node);
+    this._startKeepAlive();
+    return true;
+  }
 
-    this._removeExisting(side);
+  // chess.com and lichess re-render the player bar (game start, rematch, clock
+  // changes) and drop foreign nodes. Put ours back when that happens.
+  _startKeepAlive() {
+    if (this._keepAlive) return;
+    this._keepAlive = setInterval(() => {
+      if (!this._injected.size) { clearInterval(this._keepAlive); this._keepAlive = null; return; }
+      for (const [key, node] of this._injected) {
+        if (node.isConnected) continue;
+        const side = node.dataset.side;
+        const el = this._findUsernameElement(side);
+        if (el && el.parentElement) this._attach(key, side, node);
+      }
+    }, 1000);
+  }
 
-    const badge = this._createBadge(username, insights, side, opts);
-    if (!badge) return;
+  _remove(key, selector) {
+    const old = this._injected.get(key);
+    if (old) old.remove();
+    this._injected.delete(key);
+    document.querySelectorAll(selector).forEach(e => e.remove());
+  }
 
-    const parent = el.parentElement;
-    if (parent) {
-      parent.appendChild(badge);
-    }
-    this._injected.set(side, badge);
+  removeAll() {
+    for (const [, el] of this._injected) el.remove();
+    this._injected.clear();
+    if (this._keepAlive) { clearInterval(this._keepAlive); this._keepAlive = null; }
+    document.querySelectorAll('.crs-insights-badge,.crs-embed-score').forEach(e => e.remove());
+  }
+
+  removeStat(side) { this._remove('stats-' + side, `.crs-insights-badge[data-side="${side}"]`); }
+  removeScore(side) { this._remove('score-' + side, `.crs-embed-score[data-side="${side}"]`); }
+  removeSide(side) { this.removeStat(side); this.removeScore(side); }
+
+  // ── W/L/D chip ────────────────────────────────────────────
+  // opts: { format, timeInterval, colorHighlight }
+  injectStats(username, filtered, side, opts = {}) {
+    this._remove('stats-' + side, `.crs-insights-badge[data-side="${side}"]`);
+    const badge = this._createBadge(filtered, side, opts);
+    if (badge) this._attach('stats-' + side, side, badge);
   }
 
   // Legacy wrappers
   injectOpponentStats(username, insights) { this.injectStats(username, insights, 'top'); }
   injectSelfStats(username, insights) { this.injectStats(username, insights, 'bottom'); }
 
-  _removeExisting(side) {
-    const old = this._injected.get(side);
-    if (old && old.parentElement) old.remove();
-    this._injected.delete(side);
-    document.querySelectorAll(`.crs-insights-badge[data-side="${side}"]`).forEach(e => e.remove());
-  }
-
-  removeAll() {
-    for (const [, el] of this._injected) {
-      if (el && el.parentElement) el.remove();
-    }
-    this._injected.clear();
-    document.querySelectorAll('.crs-insights-badge,.crs-embed-score').forEach(e => e.remove());
-  }
-
-  // Inject a small risk score circle next to a player's username
+  // ── score ring ────────────────────────────────────────────
   injectScoreCircle(score, level, side = 'top') {
-    const el = this._findUsernameElement(side);
-    if (!el) return;
-
-    document.querySelectorAll(`.crs-embed-score[data-side="${side}"]`).forEach(e => e.remove());
-
-    const { color } = level;
-    const CIRC = 69.12;
-    const offset = CIRC - (score / 100) * CIRC;
-
-    const circle = document.createElement('div');
-    circle.className = 'crs-embed-score';
-    circle.dataset.side = side;
-    circle.title = `Risk Score: ${score}/100 - ${level.label}`;
-    const fontSize = score >= 100 ? '9' : '12';
-    circle.innerHTML = `
-      <svg viewBox="0 0 28 28" width="1.5em" height="1.5em" style="vertical-align:middle">
-        <circle cx="14" cy="14" r="11" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2.5"/>
-        <circle cx="14" cy="14" r="11" fill="none" stroke="${color}" stroke-width="2.5"
-          stroke-dasharray="${CIRC}" stroke-dashoffset="${offset}"
-          stroke-linecap="round" transform="rotate(-90 14 14)"
-          style="filter:drop-shadow(0 0 3px ${level.glow})"/>
-        <text x="14" y="14" text-anchor="middle" dominant-baseline="central"
-          fill="${color}" font-size="${fontSize}" font-weight="700" font-family="'JetBrains Mono',monospace">${score}</text>
-      </svg>`;
-
-    const parent = el.parentElement;
-    if (parent) {
-      parent.appendChild(circle);
+    this._remove('score-' + side, `.crs-embed-score[data-side="${side}"]`);
+    const label = (level?.label || '').toUpperCase();
+    const band = label.startsWith('LOW') ? 'low' : label.startsWith('MOD') ? 'mod' : label.startsWith('HIGH') ? 'high' : 'ext';
+    const CIRC = 69.12, offset = CIRC - (score / 100) * CIRC;
+    const ring = document.createElement('span');
+    ring.className = `crs-embed-score crs-${band}` + (score >= 100 ? ' crs-3d' : '');
+    ring.dataset.side = side;
+    ring.title = `Risk Score: ${score}/100 · ${level.label}`;
+    // Built with DOM methods, not an HTML string, so nothing from the page or API is parsed as markup.
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 28 28'); svg.setAttribute('aria-hidden', 'true');
+    for (const cls of ['crs-er-t', 'crs-er-f']) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('class', cls); c.setAttribute('cx', '14'); c.setAttribute('cy', '14'); c.setAttribute('r', '11');
+      if (cls === 'crs-er-f') { c.setAttribute('stroke-dasharray', String(CIRC)); c.setAttribute('stroke-dashoffset', String(offset)); }
+      svg.appendChild(c);
     }
-    this._injected.set('score-' + side, circle);
+    const num = document.createElement('b'); num.textContent = String(score);
+    ring.append(svg, num);
+    this._attach('score-' + side, side, ring);
   }
 
   _findUsernameElement(side) {
@@ -87,7 +108,7 @@ class InsightsInjector {
     // Compact mode
     const compactRow = document.querySelector(`${zone} .user-tagline-compact-row`);
     if (compactRow) {
-      return compactRow.querySelector('.user-tagline-compact-username') || compactRow;
+      return compactRow.querySelector('.user-tagline-compact-username') || compactRow.firstElementChild || compactRow;
     }
 
     // Normal mode chess.com
@@ -115,47 +136,38 @@ class InsightsInjector {
     return null;
   }
 
-  // Filter insights by time interval and optionally by format
-  // opts: { format, timeInterval (seconds), colorHighlight }
+  // W/L/D inside the chosen interval. Returns { format, wins, losses, draws, total, interval }.
+  // With a known format the result is always for that format, even when it is 0/0/0.
+  // Without one, the format with the most games in the interval is used.
+  // opts: { format, timeInterval (seconds) }
   filterByTime(insights, recentGames, username, opts = {}) {
-    if (!insights || !recentGames) return insights;
+    const interval = opts.timeInterval || 86400;
+    const empty = { format: opts.format || null, wins: 0, losses: 0, draws: 0, total: 0, interval };
+    if (!recentGames) return empty;
 
     const userL = username.toLowerCase();
-    const interval = opts.timeInterval || 86400;
     const cutoff = (Date.now() / 1000) - interval;
-    const targetFormat = opts.format || null;
-
-    // If a format is detected, only process that format; otherwise process all
-    const formatsToProcess = targetFormat ? [targetFormat] : Object.keys(insights);
-
-    const filtered = {};
-    for (const fmt of formatsToProcess) {
-      if (!insights[fmt]) continue;
-      let wins = 0, losses = 0, draws = 0;
-      for (const game of recentGames) {
-        if (!game.time_class || game.time_class !== fmt) continue;
-        const ts = game.end_time || 0;
-        if (ts < cutoff) continue;
-        const isW = (game.white?.username || '').toLowerCase() === userL;
-        const isB = (game.black?.username || '').toLowerCase() === userL;
-        if (!isW && !isB) continue;
-        const p = isW ? game.white : game.black; if (!p) continue;
-        if (p.result === 'win') wins++;
-        else if (['resigned','timeout','checkmated','abandoned'].includes(p.result)) losses++;
-        else draws++;
-      }
-      filtered[fmt] = {
-        ...insights[fmt],
-        recent: { wins, losses, draws, total: wins + losses + draws },
-      };
+    const byFormat = {};
+    for (const game of recentGames) {
+      if (!game.time_class || (game.end_time || 0) < cutoff) continue;
+      if (game.rated === false) continue;
+      if (game.rules && game.rules !== 'chess') continue;
+      const isW = (game.white?.username || '').toLowerCase() === userL;
+      const isB = (game.black?.username || '').toLowerCase() === userL;
+      if (!isW && !isB) continue;
+      const p = isW ? game.white : game.black; if (!p) continue;
+      const r = byFormat[game.time_class] || (byFormat[game.time_class] = { wins: 0, losses: 0, draws: 0, total: 0 });
+      if (p.result === 'win') r.wins++;
+      else if (['resigned', 'timeout', 'checkmated', 'abandoned', 'lose'].includes(p.result)) r.losses++;
+      else r.draws++;
+      r.total++;
     }
 
-    // If format was specified but no data, fall back to all-format combined
-    if (targetFormat && (!filtered[targetFormat] || filtered[targetFormat].recent.total === 0)) {
-      return this.filterByTime(insights, recentGames, username, { ...opts, format: null });
+    let fmt = opts.format || null;
+    if (!fmt) {
+      for (const [f, r] of Object.entries(byFormat)) if (!fmt || r.total > byFormat[fmt].total) fmt = f;
     }
-
-    return filtered;
+    return { ...empty, format: fmt, ...(byFormat[fmt] || {}) };
   }
 
   // Legacy alias
@@ -165,80 +177,37 @@ class InsightsInjector {
 
   // Convert time interval in seconds to human-readable label
   _intervalLabel(seconds) {
-    const labels = { 3600: 'Last 1 hour', 21600: 'Last 6 hours', 43200: 'Last 12 hours', 86400: 'Last 24 hours', 259200: 'Last 3 days', 604800: 'Last 7 days' };
-    return labels[seconds] || `Last ${Math.round(seconds / 3600)}h`;
+    const labels = { 3600: 'last 1 hour', 21600: 'last 6 hours', 43200: 'last 12 hours', 86400: 'last 24 hours', 259200: 'last 3 days', 604800: 'last 7 days' };
+    return labels[seconds] || `last ${Math.round(seconds / 3600)}h`;
   }
 
-  _createBadge(username, insights, side, opts = {}) {
-    if (!insights) return null;
+  _createBadge(rec, side, opts = {}) {
+    if (!rec) return null;
     const colorHL = opts.colorHighlight !== false;
-    const intervalLabel = this._intervalLabel(opts.timeInterval || 86400);
-
-    // Find the best format (highest total recent games)
-    let bestFmt = null;
-    let bestTotal = 0;
-    for (const [fmt, data] of Object.entries(insights)) {
-      if (data.recent.total > bestTotal) {
-        bestTotal = data.recent.total;
-        bestFmt = fmt;
-      }
-    }
-
-    if (!bestFmt || bestTotal === 0) {
-      return this._createOverallBadge(insights, side, opts);
-    }
-
-    const d = insights[bestFmt];
-    const { wins, losses, draws, total } = d.recent;
-
-    const badge = document.createElement('div');
-    badge.className = 'crs-insights-badge';
+    const when = this._intervalLabel(rec.interval || opts.timeInterval || 86400);
+    const fmt = rec.format ? rec.format.charAt(0).toUpperCase() + rec.format.slice(1) : '';
+    const badge = document.createElement('span');
+    badge.className = 'crs-insights-badge' + (colorHL ? ' crs-hl' : '') + (rec.total ? '' : ' crs-empty');
     badge.dataset.side = side;
-    badge.title = intervalLabel;
-
-    if (colorHL) {
-      badge.innerHTML = `
-        <span class="crs-ins-w">${wins}W</span>
-        <span class="crs-ins-sep">/</span>
-        <span class="crs-ins-l">${losses}L</span>
-        <span class="crs-ins-sep">/</span>
-        <span class="crs-ins-d">${draws}D</span>
-      `;
-    } else {
-      badge.innerHTML = `<span class="crs-ins-plain">${wins}W / ${losses}L / ${draws}D</span>`;
-    }
-
-    return badge;
-  }
-
-  _createOverallBadge(insights, side, opts = {}) {
-    let totalWins = 0, totalLosses = 0, totalDraws = 0;
-    const colorHL = opts.colorHighlight !== false;
-    for (const data of Object.values(insights)) {
-      if (data.overall) {
-        totalWins   += data.overall.wins || 0;
-        totalLosses += data.overall.losses || 0;
-        totalDraws  += data.overall.draws || 0;
-      }
-    }
-
-    if (totalWins + totalLosses + totalDraws === 0) return null;
-
-    const badge = document.createElement('div');
-    badge.className = 'crs-insights-badge';
-    badge.dataset.side = side;
-    badge.title = 'Overall stats';
-
-    if (colorHL) {
-      badge.innerHTML = `
-        <span class="crs-ins-w">${totalWins}W</span>
-        <span class="crs-ins-sep">/</span>
-        <span class="crs-ins-l">${totalLosses}L</span>
-        <span class="crs-ins-sep">/</span>
-        <span class="crs-ins-d">${totalDraws}D</span>
-      `;
-    } else {
-      badge.innerHTML = `<span class="crs-ins-plain">${totalWins}W / ${totalLosses}L / ${totalDraws}D</span>`;
+    badge.title = rec.total
+      ? `${fmt ? fmt + ' · ' : ''}rated games, ${when}`
+      : `No rated ${fmt ? fmt.toLowerCase() + ' ' : ''}games in the ${when}`;
+    const part = (tag, cls, text) => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+    badge.append(
+      part('i', 'crs-ins-w', rec.wins + 'W'), part('span', 'crs-ins-sep', '/'),
+      part('i', 'crs-ins-l', rec.losses + 'L'), part('span', 'crs-ins-sep', '/'),
+      part('i', 'crs-ins-d', rec.draws + 'D'));
+    if (opts.reportUser) {
+      // Flag at the end of the opponent's chip: opens the site's own report window.
+      const NS = 'http://www.w3.org/2000/svg';
+      const flag = document.createElement('button');
+      flag.type = 'button'; flag.className = 'crs-chip-rep';
+      flag.title = 'Report ' + opts.reportUser; flag.setAttribute('aria-label', flag.title);
+      const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+      const p = document.createElementNS(NS, 'path'); p.setAttribute('d', 'M5 21V4M5 4h11l-2 4 2 4H5'); svg.appendChild(p);
+      flag.appendChild(svg);
+      flag.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); crsOpenReport(opts.reportUser); });
+      badge.classList.add('crs-flagged'); badge.appendChild(flag);
     }
     return badge;
   }

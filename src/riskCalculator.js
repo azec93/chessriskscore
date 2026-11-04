@@ -140,6 +140,7 @@ class RiskCalculator {
 
     return {
       score, overallWR: Math.round(overallWR), recentWR: Math.round(recentWR),
+      totalGames: (rec ? rec.total : 0) + rTotal,
       overallWinPct, recentWinPct, dampener,
       accRisk: Math.round(accRisk), accBand, fmtRating,
       avgAccuracy: avgAcc !== null ? Math.round(avgAcc * 10) / 10 : null, accGames: accCount,
@@ -163,31 +164,39 @@ class RiskCalculator {
   computeInsights(recentGames, username, stats, formats) {
     const userL = username.toLowerCase(), result = {};
     const sevenDaysAgo = (Date.now() / 1000) - (7 * 86400);
+    // One accumulator per format, filled in a SINGLE pass over the games
+    // (previously this looped every game once per format — formats × N).
+    const acc = {};
+    const fmtSet = new Set(formats);
+    for (const fmt of formats) acc[fmt] = { wins:0,losses:0,draws:0,accTotal:0,accSum:0,o7dTs:Infinity,n7dTs:-Infinity,o7dR:null,n7dR:null };
+
+    for (const game of recentGames) {
+      const fmt = game.time_class;
+      if (!fmt || !fmtSet.has(fmt)) continue;
+      if (this.cfg.RATED_ONLY && game.rated === false) continue;
+      const isW = (game.white?.username||'').toLowerCase() === userL;
+      const isB = (game.black?.username||'').toLowerCase() === userL;
+      if (!isW && !isB) continue;
+      const p = isW ? game.white : game.black; if (!p) continue;
+      const a = acc[fmt];
+      if (p.result === 'win') a.wins++;
+      else if (['resigned','timeout','checkmated','abandoned'].includes(p.result)) a.losses++;
+      else a.draws++;
+      const accuracy = game.accuracies ? (isW ? game.accuracies.white : game.accuracies.black) : null;
+      if (accuracy !== null && accuracy !== undefined) { a.accSum += accuracy; a.accTotal++; }
+      const ts = game.end_time || 0;
+      if (ts >= sevenDaysAgo) { const r = p['@rating'] || p.rating || null; if (r) { if (ts < a.o7dTs) { a.o7dTs = ts; a.o7dR = r; } if (ts > a.n7dTs) { a.n7dTs = ts; a.n7dR = r; } } }
+    }
+
     for (const fmt of formats) {
-      let wins=0,losses=0,draws=0,accTotal=0,accSum=0;
-      let o7dTs=Infinity,n7dTs=-Infinity,o7dR=null,n7dR=null;
-      for (const game of recentGames) {
-        if (!game.time_class||game.time_class!==fmt) continue;
-        if (this.cfg.RATED_ONLY&&game.rated===false) continue;
-        const isW=(game.white?.username||'').toLowerCase()===userL;
-        const isB=(game.black?.username||'').toLowerCase()===userL;
-        if (!isW&&!isB) continue;
-        const p=isW?game.white:game.black; if(!p) continue;
-        if (p.result==='win') wins++;
-        else if (['resigned','timeout','checkmated','abandoned'].includes(p.result)) losses++;
-        else draws++;
-        const acc=game.accuracies?(isW?game.accuracies.white:game.accuracies.black):null;
-        if (acc!==null&&acc!==undefined){accSum+=acc;accTotal++;}
-        const ts=game.end_time||0;
-        if (ts>=sevenDaysAgo){const r=p['@rating']||p.rating||null;if(r){if(ts<o7dTs){o7dTs=ts;o7dR=r;}if(ts>n7dTs){n7dTs=ts;n7dR=r;}}}
-      }
-      const rc7d=(n7dR!==null&&o7dR!==null&&n7dTs!==o7dTs)?n7dR-o7dR:null;
-      const key=`chess_${fmt}`,fs=stats[key];
-      result[fmt]={
-        recent:{wins,losses,draws,total:wins+losses+draws},
+      const a = acc[fmt];
+      const rc7d = (a.n7dR !== null && a.o7dR !== null && a.n7dTs !== a.o7dTs) ? a.n7dR - a.o7dR : null;
+      const key = `chess_${fmt}`, fs = stats[key];
+      result[fmt] = {
+        recent:{ wins:a.wins, losses:a.losses, draws:a.draws, total:a.wins+a.losses+a.draws },
         overall:this._getFormatRecord(stats,fmt),
-        avgAccuracy:accTotal>0?Math.round(accSum/accTotal*10)/10:null,
-        accuracyGames:accTotal,
+        avgAccuracy:a.accTotal>0?Math.round(a.accSum/a.accTotal*10)/10:null,
+        accuracyGames:a.accTotal,
         currentRating:fs?.last?.rating||null,
         peakRating:fs?.best?.rating||null,
         ratingChange7d:rc7d,
@@ -206,14 +215,20 @@ class RiskCalculator {
     const title = profile?.title || null;
     const formatsToScore = (preferredFormat && formats.includes(preferredFormat)) ? [preferredFormat] : formats;
 
-    let bestScore=0, bestFormat=null;
+    let bestScore=0, bestFormat=null, bestGames=-1;
     let bestBreakdown={overallWinrate:0,recentWinrate:0,accRisk:0,overallWinPct:0,recentWinPct:0,dampener:1,title:null};
     let bestAccBand={avgLo:0,avgHi:0,expected:0,threshold:0};
     let bestFmtRating=0, bestAvgAcc=null, bestAccGames=0;
 
     for (const fmt of formatsToScore) {
       const r = this._scoreForFormat(fmt, stats, recentGames, username, ageFactor, bestRating, platform, title);
-      if (r.score > bestScore || formatsToScore.length === 1) {
+      // Take strictly higher scores; on ties (e.g. every format scores 0 for an
+      // honest player) prefer the format with the most games, so the overlay
+      // shows a real accuracy band instead of '?' placeholders.
+      if (bestFormat === null || r.score > bestScore ||
+          (r.score === bestScore && r.totalGames > bestGames) ||
+          formatsToScore.length === 1) {
+        bestGames = r.totalGames;
         bestScore=r.score;
         bestBreakdown={overallWinrate:r.overallWR,recentWinrate:r.recentWR,accRisk:r.accRisk,overallWinPct:r.overallWinPct,recentWinPct:r.recentWinPct,dampener:r.dampener,title};
         bestFormat=fmt; bestAccBand=r.accBand; bestFmtRating=r.fmtRating; bestAvgAcc=r.avgAccuracy; bestAccGames=r.accGames;

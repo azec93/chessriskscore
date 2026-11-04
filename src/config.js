@@ -43,6 +43,18 @@ const CONFIG = {
       [3000, 88, 92, 90, 95],
       [Infinity, 90, 93, 92, 97],
     ],
+    // Daily / correspondence — days per move and on-board analysis are allowed,
+    // so legitimate accuracy runs much higher. Thresholds are set high to avoid
+    // over-flagging. Most daily games have no accuracy data, so this rarely fires.
+    daily: [
+      [700,  68, 78, 73, 84],
+      [1000, 76, 84, 80, 88],
+      [1500, 82, 88, 85, 92],
+      [2000, 86, 91, 89, 94],
+      [2500, 89, 93, 91, 96],
+      [3000, 91, 95, 93, 97],
+      [Infinity, 92, 96, 94, 98],
+    ],
   },
 
   // ── Lichess ACPL-converted accuracy (~3-4% below CAPS2) ─────
@@ -71,6 +83,14 @@ const CONFIG = {
       [2800, 84, 90, 87, 93],
       [Infinity, 86, 92, 89, 95],
     ],
+    // Daily / correspondence (Lichess maps "correspondence" -> daily)
+    daily: [
+      [1000, 65, 78, 72, 84],
+      [1500, 75, 85, 80, 89],
+      [2000, 82, 89, 86, 93],
+      [2800, 86, 92, 89, 95],
+      [Infinity, 89, 94, 91, 97],
+    ],
   },
 
   ACCOUNT_AGE: {
@@ -94,12 +114,14 @@ const CONFIG = {
   MIN_GAMES_FOR_RATING: 3,
   MIN_GAMES_FOR_ACCURACY: 3,
   RECENT_MONTHS: 2,
-  FORMATS: ['rapid', 'blitz', 'bullet'],
-  LICHESS_FORMATS: ['rapid', 'blitz', 'bullet'],
+  FORMATS: ['rapid', 'blitz', 'bullet', 'daily'],
+  LICHESS_FORMATS: ['rapid', 'blitz', 'bullet', 'daily'],
   RATED_ONLY: true,
 
   DETECTION: {
-    INITIAL_CHECK_DELAY: 200, POLL_INTERVAL: 600,
-    MUTATION_DEBOUNCE: 250, URL_WATCH_INTERVAL: 300, URL_CHANGE_DELAY: 800,
+    // v1.5.0: first check sooner and DOM changes checked within 120ms (was a 250ms debounce
+    // that live clocks kept resetting). POLL and URL_CHANGE_DELAY are unchanged.
+    INITIAL_CHECK_DELAY: 50, POLL_INTERVAL: 600,
+    MUTATION_DEBOUNCE: 120, URL_WATCH_INTERVAL: 300, URL_CHANGE_DELAY: 800,
   },
 };
