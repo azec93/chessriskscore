@@ -78,7 +78,7 @@ const CRS_SK = (() => {
   function replay(sans) {
     const b = new Array(128).fill(null), back = 'rnbqkbnr';
     for (let f = 0; f < 8; f++) { b[f] = back[f].toUpperCase(); b[16 + f] = 'P'; b[96 + f] = 'p'; b[112 + f] = back[f]; }
-    let white = true, cas = 'KQkq', ep = null, half = 0, full = 1; const fens = [], pcs = [], value = [];
+    let white = true, cas = 'KQkq', ep = null, half = 0, full = 1; const fens = [], pcs = [], value = [], all = [];
     const dropCas = t => { const m = { 0: 'Q', 7: 'K', 112: 'q', 119: 'k' }[t]; if (m) cas = cas.replace(m, ''); };
     for (let n = 0; n < sans.length; n++) {
       const s = sans[n].replace(/[+#!?]+$/, ''); let from, to, promo = null, epCap = null, capture = false, pawn = false;
@@ -106,9 +106,10 @@ const CRS_SK = (() => {
       if (/#$/.test(sans[n])) over = white ? -10000 : 10000;
       else if (deadDrawn(b)) over = 0;
       else if (n === sans.length - 1 && !anyLegal(b, white, ep)) over = attacked(b, kingAt(b, white), !white) ? (white ? -10000 : 10000) : 0;
-      fens.push(over == null ? fenOf(b, white, cas, ep, half, full) : null); value.push(over);
+      const f = fenOf(b, white, cas, ep, half, full); all.push(f);
+      fens.push(over == null ? f : null); value.push(over);
     }
-    return { fens, pcs, value };
+    return { fens, pcs, value, all };      // all = every position, game-over ones included (for the board checks in stats-core.js)
   }
 
   // ── tallies for one side of one game, same rules as the benchmark script ──
@@ -166,12 +167,14 @@ const CRS_SK = (() => {
       if (timed && clk[i] != null && prev != null) { const spent = prev + inc - clk[i], b = spent < 3 ? 0 : spent < 20 ? 1 : 2; tN[b]++; if (big) tB[b]++; }
     }
     const last = s * ev[ev.length - 1] >= 100, who = myI < 0 && theirI < 0 ? 0 : theirI < 0 || (myI >= 0 && myI < theirI) ? 1 : -1;
+    // y = the board-based numbers behind My stats v2 (stats-core.js); null if that file is not loaded or the game cannot be read
+    let y = null; try { if (typeof CRS_SX !== 'undefined' && g.all) y = CRS_SX.extra(g, r); } catch (e) { y = null; }
     return { id: g.id, t: g.t, tc: g.tc, c, r, rt: g.rt, u: g.u, op: g.op || '', me: pack(tallies(g, c)), th: pack(tallies(g, c === 'w' ? 'b' : 'w')),
       x: [lowN, lowB, hiN, hiB, first, bigs, bigE, bigUp, reached ? 1 : 0, res === 'timeout' && last ? 1 : 0, up ? 1 : 0, down ? 1 : 0, res === 'timeout' ? 1 : 0, ev.length > 29 ? Math.round(s * Math.max(-600, Math.min(600, ev[29]))) : null,
-        ev.length, ...(timed ? tB : [null, null, null]), endEv, who, theirFirst, ...(timed ? tN : [null, null, null])] };
+        ev.length, ...(timed ? tB : [null, null, null]), endEv, who, theirFirst, ...(timed ? tN : [null, null, null]), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], y };
   }
-  // x[15..17] big mistakes by think time (under 3 s, 3–20 s, 20 s+), x[18] your evaluation as the endgame starts, x[19] who made the first big mistake (1 you, -1 them, 0 neither), x[20] their first big mistake's move, x[21..23] moves by think time
-  const XLEN = 24;      // rows saved with fewer numbers than this are analysed again on the next Search
+  // x[15..17] big mistakes by think time (under 3 s, 3–20 s, 20 s+), x[18] your evaluation as the endgame starts, x[19] who made the first big mistake (1 you, -1 them, 0 neither), x[20] their first big mistake's move, x[21..23] moves by think time, x[24] row version (2 = has y)
+  const XLEN = 34;      // rows saved with fewer numbers than this are analysed again on the next Search (32: y.oh opening habits, 2026-11-10)
 
   // ── the comparison ──
   const MET = {
@@ -233,6 +236,6 @@ const CRS_SK = (() => {
     return { id: g.id, tc, t: Math.floor((g.createdAt || 0) / 1000), c, rt: (c === 'w' ? w : b).rating || 0, u: (c === 'w' ? b : w).user.name || '', op: typeof CRS_HIST !== 'undefined' ? CRS_HIST.opFamily(g.opening && g.opening.name) : '', wres: res('white'), bres: res('black'), base: tc === 'daily' ? 0 : (g.clock && g.clock.initial) || 0, inc: tc === 'daily' ? 0 : (g.clock && g.clock.increment) || 0, san, clk };
   }
 
-  return { DEPTH, MIN_GAMES, XLEN, engines, secondsPerGame, parsePgn, replay, baseOf, tallies, gameRow, report, verdict, fromChessCom, fromLichess, unpack, MET, wp };
+  return { DEPTH, MIN_GAMES, XLEN, engines, secondsPerGame, parsePgn, replay, baseOf, tallies, gameRow, report, verdict, fromChessCom, fromLichess, unpack, MET, wp, _b: { attacked, kingAt, on, sq, STEPS, whiteP } };
 })();
 if (typeof module !== 'undefined') module.exports = CRS_SK;

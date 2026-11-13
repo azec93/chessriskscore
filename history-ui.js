@@ -12,7 +12,7 @@
       note: 'Lichess marks an account when it breaks the rules, mostly engine use but sometimes other violations; that is the count above. Closed accounts are counted apart. Rated standard chess only. Some cheaters are never caught, so these numbers are a floor.' },
   };
   const RANGES = { g50: { label: 'your last 50 games' }, recent: { label: 'your last 100 games' }, g250: { label: 'your last 250 games' }, g500: { label: 'your last 500 games' }, medium: { label: 'your last 1,000 games', hint: 'A bigger sample: takes a few minutes.' },
-    d7: { label: 'the last 7 days' }, d30: { label: 'the last 30 days' }, d90: { label: 'the last 90 days' }, d365: { label: 'the last year', hint: 'Can take a few minutes if you play a lot.' }, full: { label: 'your whole career', hint: 'Can take hours on a long history. You can pause and carry on later.' } };
+    d1: { label: 'today' }, wk: { label: 'this week' }, mo: { label: 'this month' }, d90: { label: 'the last 3 months' }, d180: { label: 'the last 6 months' }, d365: { label: 'the last year', hint: 'Can take a few minutes if you play a lot.' }, full: { label: 'your whole career', hint: 'Can take hours on a long history. You can pause and carry on later.' } };
   const PILL = { 'READING GAMES': ['run', 'Reading games'], 'CHECKING OPPONENTS': ['run', 'Checking opponents'], FINISHED: ['ok', 'Complete'], PAUSED: ['stop', 'Paused'], STOPPED: ['stop', 'Stopped'], READY: ['idle', 'Ready'] };
   const TERMINAL = ['FINISHED', 'PAUSED', 'STOPPED'];
   const fmt = n => Number(n).toLocaleString('en-US');
@@ -29,7 +29,16 @@
   });
   const VALID = { cc: /^[A-Za-z0-9_-]{3,25}$/, li: /^[A-Za-z0-9_-]{2,30}$/ };
   const R = { cc: null, li: null };
-  let sk = null, skRows = { cc: null, li: null }, skOpen = '';
+  let sk = null, skRows = { cc: null, li: null }, skOpen = '', skPhase = 'Opening';
+  const sxOpen = new Set();
+  let pfShut = new Set();      // Profile headings the user closed (by their text); saved in prefs
+  function pfApply() {
+    for (const l of document.querySelectorAll('#st-form .lbl.t-head')) {
+      const key = l.textContent.trim(), shut = pfShut.has(key); l.classList.add('pf-h'); l.classList.toggle('pf-shut', shut); l.setAttribute('role', 'button'); l.setAttribute('aria-expanded', String(!shut)); l.tabIndex = 0;
+      for (let n = l.nextElementSibling; n && !(n.classList.contains('lbl') && n.classList.contains('t-head')); n = n.nextElementSibling) n.classList.toggle('pf-hid', shut);
+    }
+  }      // v2 insight rows that are open (Skills phases and Insights)
+  let shareData = null;      // 7A: what the share card is drawn from, set when the You tab paints
   let sel = 'cc', range = 'recent', lens = 'ins', tcPick = 'all', opSide = 'all', clearArmed = 0, msgBad = false, starting = null;   // starting: the scan is requested but not yet reported
 
   const ago = t => { const d = Math.floor((Date.now() / 1000 - t) / 86400); return d < 1 ? 'today' : d === 1 ? 'yesterday' : d < 60 ? d + 'd ago' : new Date(t * 1000).toISOString().slice(0, 10); };
@@ -37,7 +46,7 @@
   const say = (t, bad) => { $('st-msg').textContent = t; $('st-msg').classList.toggle('bad', !!bad); msgBad = !!bad; };
   const busyNow = r => !!(r && r.busy && !TERMINAL.includes(r.state));          // a scan that has already ended is not busy, even if the last flag is still on its way
   const anyBusy = () => busyNow(R.cc) || busyNow(R.li);
-  const prefs = () => { try { chrome.storage.local.set({ [PREF]: { range, lens, tc: tcPick, side: opSide, site: sel } }); } catch (e) {} };
+  const prefs = () => { try { chrome.storage.local.set({ [PREF]: { range, lens, tc: tcPick, side: opSide, site: sel, phase: skPhase, shut: [...pfShut] } }); } catch (e) {} };
 
   // ── Recent form ──
   const tot3 = a => a[0] + a[1] + a[2];
@@ -83,7 +92,7 @@
       const n = tot3(all); if (n < 10) continue;
       const me = score3(all), c = tone3(me, typ);
       out.push({ k: 'col' + side[0], ic: 'half', tone: c, head: `As ${side} you score <b class="${c}">${pc(all)}%</b>. Typical is ${Math.round(typ * 100)}%.`,
-        more: tickBar(`${fmt(n)} games`, me, typ, c, `${pc(all)}%`) + `<p>The white line is typical.</p>`, to: 'form' });
+        more: `<p>Over ${fmt(n)} games as ${side}.</p>`, to: 'form' });
       // an opening is named only when it has 15+ games and differs from the rest of your games with that colour by more than chance (95%, two-sided)
       const z = k => { const a = set[k], r = all.map((x, i) => x - a[i]), na = tot3(a), nr = tot3(r); if (nr < 5) return 0;
         const pr = score3(r), v = (r[0] + r[1] / 4) / nr - pr * pr; return v > 0 ? (score3(a) - pr) / Math.sqrt(v / na + v / nr) : 0; };
@@ -101,17 +110,18 @@
     if (calmOps.length) out.push({ calm: 'openings', line: `Openings: none of your ${calmOps.join(' or ')} openings scores differently from the rest by more than chance.` });
     return out;
   }
+  const HABW = { 'After a loss': 'after a loss', 'After two losses': 'after two losses in a row', 'After a win': 'after a win', 'Games 1 to 5': 'in the first five games of a sitting', 'Game 6 onwards': 'from the sixth game of a sitting', Mornings: 'in the mornings', Afternoons: 'in the afternoons', Evenings: 'in the evenings', Nights: 'at night' };
   function habitsInto(P) {
     const G = H && H.habits(P); $('sf-habbox').hidden = !G || !G.rows.length; if ($('sf-habbox').hidden) return;
-    $('sf-habits').innerHTML = G.rows.filter(r => r.n >= 5).map(r => scoreRow(r.label, r.a)).join('');
-    const f = G.flag, tail = 'Game numbers count from the start of a sitting. A sitting is games under an hour apart. Times follow this computer\'s clock.';
-    $('sf-habnote').innerHTML = (f ? `${esc(f.label)} stands out: ${Math.round(f.you * 100)}% against ${Math.round(f.rest * 100)}% in your other games. ` : 'None of these gaps is bigger than chance. ') + tail;
+    $('sf-habits').innerHTML = G.rows.filter(r => r.n >= 5).map(r => { const d = r.n >= 15 ? r.you - r.rest : 0, c = d >= .05 ? 'up' : d <= -.05 ? 'down' : ''; return `<div class="sf-row"><span title="${esc(r.label)}">${esc(r.label)}</span><small>${fmt(r.n)}</small><b class="${c}">${Math.round(r.you * 100)}%</b></div>`; }).join('');
+    const f = G.flag, how = 'Your score in different situations, green or orange when 5 points or more above or below your other games (15 games or more). After a loss and after a win: the very next game. Games 1 to 5 and game 6 onwards: where the game falls in a sitting, which is games played less than an hour apart. Afternoons, evenings and nights follow this computer\'s clock.';
+    $('sf-habnote').innerHTML = how + ' ' + (f ? `${esc(f.label)} stands out: ${Math.round(f.you * 100)}% against ${Math.round(f.rest * 100)}% in your other games, a gap too big to be luck.` : 'None of the gaps is bigger than luck would produce, so none of these is a habit yet.');
   }
   function renderForm(All) {
     const tc = tcPick !== 'all' && range === 'full' ? tcPick : null, P = tc ? All.by[tc] : All;      // a career scan reads everything, so it filters here; any other range was fetched for this time control
     const n = P.n, sc = n ? (P.w + P.d / 2) / n : 0, pc = x => n ? Math.round(x / n * 100) + '%' : '–';
-    $('sf-big').textContent = (sc * 100).toFixed(1) + '%';
-    $('sf-what').textContent = tc ? `score over ${fmt(n)} ${tc} game${n === 1 ? '' : 's'}` : `score over ${rangeLabel(range, tcPick)}`;
+    { const typ = typicalOf(P), c = sc - typ >= .03 ? 'up' : sc - typ <= -.03 ? 'down' : ''; $('sf-big').textContent = (sc * 100).toFixed(1) + '%'; $('sf-big').className = c; $('sf-big').dataset.typ = Math.round(typ * 100); }
+    $('sf-what').textContent = (tc ? `score over ${fmt(n)} ${tc} game${n === 1 ? '' : 's'}` : `score over ${rangeLabel(range, tcPick)}`) + `. Typical is ${$('sf-big').dataset.typ}%.`;
     [['w', P.w], ['d', P.d], ['l', P.l]].forEach(([k, x]) => { const e = document.querySelector('#sf-wdl .' + k); e.style.width = (x / (n || 1) * 100) + '%'; e.style.display = x ? '' : 'none'; $('sf-' + k).textContent = fmt(x); $('sf-' + k + 'p').textContent = pc(x); });
     // rating: the time control you played most, first and last rating in the sample
     let best = null; for (const k in P.tc) if (!best || P.tc[k].n > P.tc[best].n) best = k;
@@ -142,6 +152,19 @@
       return m ? `<div class="sf-row"><span>${label}</span><small>${fmt(m)}</small><b class="${shown > 50 ? 'up' : shown < 50 ? 'down' : ''}">${shown}%</b></div>` : `<div class="sf-row empty"><span>${label}</span><small>0</small><b>–</b></div>`;
     }).join('');
     habitsInto(P);
+    // v2 Profile rows: game length, mates, tactics, positional themes, style, habits; each row is its key stat, tap for the table
+    { const use = SK ? skUse() : [], Y = typeof CRS_SX !== 'undefined' && use.length ? CRS_SX.summarize(use) : null, st = typeof CRS_SXUI !== 'undefined' ? CRS_SXUI.style(P, use, Y && Y.n ? Y : null, sxOpen) : null, extra = [];
+      const sty = $('sf-styletop'); if (sty) { sty.hidden = !st; sty.innerHTML = st ? `<div class="pf-g">Your style</div>${st.html}${st.gm && Y && Y.n ? `<div class="sx-save"><span>Save my style as an image</span><button type="button" data-save="wide">Wide</button><button type="button" data-save="square">Square</button></div>` : ''}` : ''; sty._fill = !(st && CRS_SXUI.targeted) ? null : () => { const fill = () => { const tg = $('sf-tgt'); if (tg) { tg.innerHTML = CRS_SXUI.targeted(skUse(), sxOpen); sty.dataset.warm = '1'; } }; sty.dataset.warm ? fill() : setTimeout(fill, 40); }; shareData = st && st.gm && Y && Y.n ? { gm: st.gm, Y, use } : null; }
+      const hb = $('sf-habbox');
+      if (!hb.hidden && $('sf-habits').innerHTML) { const G = H && H.habits(P), f = G && G.flag, d = f ? (f.you < f.rest ? 'down' : 'up') : '';
+        extra.push({ k: 'pf-hab', tone: d, title: 'Habits', head: f ? `You score ${d === 'down' ? 'worse' : 'better'} ${HABW[f.label] || esc(f.label).toLowerCase()}: <b class="${d}">${Math.round(f.you * 100)}%</b>, against ${Math.round(f.rest * 100)}% in your other games.` : 'Your results hold steady: after a win or a loss, early or late in a sitting and at any time of day, nothing differs by more than luck would explain.',
+          body: `<div class="sf-rows">${$('sf-habits').innerHTML}</div><p>${$('sf-habnote').innerHTML}</p>` }); }
+      $('sf-stylebox').hidden = true; hb.classList.add('pf-gone');      // its rows live in the Habits row now; pf-gone is never undone by the heading toggles
+      const bench = typeof CRS_SKBENCH !== 'undefined' ? CRS_SKBENCH[sel] : null, okB = bench && !(tcPick !== 'all' && !bench[tcPick]);
+      const Q = SK && okB && use.length >= SK.MIN_GAMES ? SK.report(use, bench) : null, mv = Q && typeof CRS_SXUI !== 'undefined' ? CRS_SXUI.moved(Q, Y && Y.n ? Y : null, WORDS[sel], sxOpen, skItemsOf(skillList(Q), WORDS[sel]), use) : [];
+      $('sf-prof').innerHTML = typeof CRS_SXUI !== 'undefined' ? CRS_SXUI.profile(use, Y && Y.n ? Y : null, sxOpen, extra, mv, { W: WORDS[sel] }) : ''; if ($('sf-styletop')._fill) $('sf-styletop')._fill(); }
+    $('sf-oplabel').hidden = $('sf-ops').hidden = $('sf-opside').hidden = true;      // crc: openings live in Skills › Opening now
+    pfApply();
   }
 
   // ── Cheater lens ──
@@ -180,15 +203,17 @@
   // ── Skills: each bar runs from Behind to Ahead around what is typical at your rating ──
   const SK = typeof CRS_SK !== 'undefined' ? CRS_SK : null, SK_FULL = 60, SK_GAMES = { g50: 50, recent: 100, g250: 250, g500: 500, medium: 1000 }, SK_DAYS = { d7: 7, d30: 30, d90: 90, d365: 365 };
   const skN = () => SK_GAMES[range] || 1000;      // a period or a career covers up to the newest 1,000 games, the most that is kept
-  const skRowsNow = () => { const p = sel, user = saved(p), rec = skRows[p], cut = SK_DAYS[range] ? Date.now() / 1000 - SK_DAYS[range] * 86400 : 0; return rec && user && rec.depth === SK.DEPTH && rec.user.toLowerCase() === user.toLowerCase() ? Object.values(rec.rows).filter(x => (tcPick === 'all' || x.tc === tcPick) && x.t >= cut) : []; };
+  const skRowsNow = () => { const p = sel, user = saved(p), rec = skRows[p], cut = H.daysOf(range) ? Date.now() / 1000 - H.daysOf(range) * 86400 : 0; return rec && user && rec.depth === SK.DEPTH && rec.user.toLowerCase() === user.toLowerCase() ? Object.values(rec.rows).filter(x => (tcPick === 'all' || x.tc === tcPick) && x.t >= cut) : []; };
   const skUse = () => { const bench = typeof CRS_SKBENCH !== 'undefined' ? CRS_SKBENCH[sel] : null; return !SK || !bench ? [] : skRowsNow().filter(x => bench[x.tc]).sort((a, b) => b.t - a.t).slice(0, skN()); };
   const num = (v, d = 0, unit = '%') => v.toFixed(d) + unit;
   const tag = (t, cls) => `<b${cls ? ` class="${cls}"` : ''}>${t}</b>`;
   const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
   const cut = rel => SK.verdict(rel) === 'level' ? '' : SK.verdict(rel);
+  // where you stand after move 15, in plain words
+  const evWords = v => Math.abs(v) < .3 ? 'about level' : `${Math.abs(v).toFixed(1)} pawns ${v > 0 ? 'up' : 'down'}`;
   function opLine(o) {
-    const sc = (o.w + o.d / 2) / o.n, pos = tag(sgn(o.ev), o.ev >= .3 ? 'ahead' : o.ev <= -.3 ? 'behind' : ''), tail = o.ev >= .3 && sc < .45 ? 'then losing most of them' : sc > .55 ? 'and scoring well' : sc < .45 ? 'and scoring poorly' : 'and scoring about even';
-    return `<b>${esc(o.name)} as ${o.c === 'w' ? 'White' : 'Black'}.</b> Usually ${pos} after move 15, ${tail}. Won ${o.w}, ${o.d ? `drew ${o.d}, ` : ''}lost ${o.l}.`;
+    const t = o.ev >= .3 ? 'ahead' : o.ev <= -.3 ? 'behind' : '';
+    return `<b>${esc(o.name)} as ${o.c === 'w' ? 'White' : 'Black'}:</b> after move 15 you are usually ${tag(evWords(o.ev), t)}. You won ${o.w}, ${o.d ? `drew ${o.d}, ` : ''}lost ${o.l}.`;
   }
   function skillList(Q) {
     const M = Q.M, R = Q.me, per100 = x => x.n ? (100 * x.b / x.n).toFixed(1) : '0', timeLost = Q.blown.filter(b => b.time).length, tb = (l, m, d, unit) => !M[m] ? null : ({ l, y: num(M[m].you, d, unit), t: num(M[m].typ, d, unit), o: num(M[m].opp, d, unit), c: cut(M[m].rel) });
@@ -200,7 +225,7 @@
         `You reached a winning position in ${tag(fmt(R.reach))} games and won ${tag(fmt(R.conv))} of them.`,
         Q.blown.length ? `That left ${tag(Q.blown.length, 'behind')} you did not win${timeLost ? `, and ${tag(Math.round(100 * timeLost / Q.blown.length))}% of those were lost on time` : ''}.` : '',
       ], games: Q.blown, gl: 'Wins that got away' },
-      { k: 'endgame', name: 'Endgame', rel: M.endgame.rel, rows: [tb('Chances lost a move', 'endgame', 1)], say: [
+      { k: 'endgame', name: 'Endgame', rel: M.endgame.rel, rows: [tb('Winning chances lost per move', 'endgame', 1)], say: [
         Q.bigs ? `${tag(Math.round(100 * Q.bigE / Q.bigs))}% of your big mistakes happen here.` : '',
       ], games: [] },
       { k: 'tactics', name: 'Tactics', rel: M.tactics.rel, rows: [tb('Big mistakes per 100', 'tactics', 1, ''), tb('Mistakes punished', 'punish')], say: [
@@ -209,8 +234,8 @@
       { k: 'save', name: 'Saving lost positions', rel: M.save.rel, rows: [tb('Saved', 'save')], say: [
         `You were clearly losing in ${tag(fmt(R.worse))} games and saved ${tag(fmt(R.saved))}.`,
       ], games: Q.saved, gl: 'Games you saved' },
-      { k: 'opening', name: 'Opening', rel: M.opening.rel, rows: [tb('Chances lost a move', 'opening', 1)], say: [
-        Q.evW != null && Q.evB != null ? `With White you are usually ${tag(sgn(Q.evW))} pawns after move 15. With Black, ${tag(sgn(Q.evB))}.` : '',
+      { k: 'opening', name: 'Opening', rel: M.opening.rel, rows: [tb('Winning chances lost per move', 'opening', 1)], say: [
+        Q.evW != null && Q.evB != null ? `After move 15 you are usually ${tag(evWords(Q.evW))} as White and ${tag(evWords(Q.evB))} as Black.` : '',
         ...Q.lines.slice(0, 2).map(opLine), ...Q.lines.slice(2).slice(-2).map(opLine),
       ], games: [] },
     ];
@@ -270,9 +295,20 @@
     return out;
   }
   const skGames = (s, W) => !s.games.length ? '' : `<div class="sk-gl">${s.gl}</div>` + s.games.slice(0, 5).map(g => `<div class="sk-g"><a href="${W.game(g.g)}" target="_blank" rel="noopener">${esc(g.u)}</a><span>${s.k === 'time' ? '' : g.r === 'w' ? 'won' : g.r === 'd' ? 'drew' : g.time ? 'lost on time' : 'lost'}</span></div>`).join('');
+  // the four skills as insight rows (tactics goes to Profile)
+  function skItemsOf(list, W) {
+    const PHK = { opening: 'Opening', tactics: 'Profile', endgame: 'Endgame', save: 'Endgame' }, word = v => v === 'behind' ? 'behind' : v === 'ahead' ? 'ahead of' : 'about level with';
+    return list.filter(s => PHK[s.k]).map(s => { const v = SK.verdict(s.rel), tone = v === 'behind' ? 'down' : v === 'ahead' ? 'up' : '', r = s.rows.filter(Boolean)[0];
+      return { k: 'sk-' + s.k, phase: PHK[s.k], tone, tipKey: s.k, title: s.name,
+        head: r ? ({ opening: `Your opening play is ${word(v)} players your rating: each of your first 15 moves gives away <b class="${tone}">${r.y}</b> of your winning chances on average (typical ${r.t}).`,
+          tactics: `Your tactics are ${word(v)} players your rating: <b class="${tone}">${r.y}</b> big mistakes per 100 moves (typical ${r.t}).`,
+          endgame: `Your endgame play is ${word(v)} players your rating: each endgame move gives away <b class="${tone}">${r.y}</b> of your winning chances on average (typical ${r.t}).`,
+          save: `You are ${word(v)} players your rating at saving lost positions: you held <b class="${tone}">${r.y}</b> of them (typical ${r.t}).` }[s.k]) : `${s.name}: you are ${word(v)} players your rating.`,
+        body: `<div class="sk-t"><span class="h"></span><span class="h n">You</span><span class="h n">Typical</span><span class="h n">Opp.</span>${s.rows.filter(Boolean).map(x => `<span>${x.l}</span><span class="n s ${x.c}">${x.y}</span><span class="n">${x.t}</span><span class="n">${x.o}</span>`).join('')}</div>${s.say.filter(Boolean).map(x => `<p>${x}</p>`).join('')}${skGames(s, W)}` }; });
+  }
   function renderSkills() {
     const p = sel, W = WORDS[p], user = saved(p), bench = typeof CRS_SKBENCH !== 'undefined' ? CRS_SKBENCH[p] : null, here = sk && sk.p === p && sk.user && sk.user.toLowerCase() === user.toLowerCase(), running = !!(sk && sk.running), mine = running && here;
-    const use = skUse(), N = skN(), period = !SK_GAMES[range], noBench = tcPick !== 'all' && !(bench && bench[tcPick]), scanning = anyBusy(), done = here && sk.state === 'FINISHED' && (sk.tc || 'all') === tcPick && sk.n >= N && (sk.days || 0) === (SK_DAYS[range] || 0), show = use.length >= SK.MIN_GAMES && !noBench;
+    const use = skUse(), N = skN(), period = !SK_GAMES[range], noBench = tcPick !== 'all' && !(bench && bench[tcPick]), scanning = anyBusy(), done = here && sk.state === 'FINISHED' && (sk.tc || 'all') === tcPick && sk.n >= N && Math.abs((sk.days || 0) - (H.daysOf(range) || 0)) < 0.05, show = use.length >= SK.MIN_GAMES && !noBench;
     const skMin = N * SK.secondsPerGame(SK.engines(navigator.hardwareConcurrency)) / 60;
     let line = '';
     if (noBench) line = `Typical numbers for ${tcPick} on ${W.site} are not ready yet, so there is nothing to compare ${tcPick} games with.`;
@@ -287,11 +323,14 @@
     if (!show) return;
     const Q = SK.report(use, bench), list = skillList(Q);
     $('sk-who').innerHTML =`${esc(W.site)} · <b>${esc(user)}</b> · ${fmt(Q.n)} game${Q.n === 1 ? '' : 's'}${mine ? ' so far' : ''}${range === 'full' && Q.n >= 1000 ? ' (newest in your career)' : ''}<br>${Q.groups.map(g => `${cap(g.tc)} ${fmt(g.rt)}`).join(' · ')}`;
-    $('sk-rows').innerHTML = list.map(s => {
-      const v = SK.verdict(s.rel), label = v[0].toUpperCase() + v.slice(1), w = Math.min(50, Math.abs(s.rel - 100) / SK_FULL * 50), open = skOpen === s.k;
-      return `<button type="button" class="sk-row" data-sk="${s.k}" aria-expanded="${open}"><span class="r"><span>${s.name}</span><b class="${cut(s.rel)}">${label}</b></span><span class="sk-db"><u class="${cut(s.rel)}" style="${s.rel >= 100 ? 'left' : 'right'}:50%;width:${w}%"></u></span></button>` + (open ? `<div class="sk-more"><div class="sk-t"><span class="h"></span><span class="h n">You</span><span class="h n">Typical</span><span class="h n">Opp.</span>${s.rows.filter(Boolean).map(r => `<span>${r.l}</span><span class="n s ${r.c}">${r.y}</span><span class="n">${r.t}</span><span class="n">${r.o}</span>`).join('')}</div>${s.say.filter(Boolean).map(x => `<p>${x}</p>`).join('')}${s.k === 'opening' ? `<p>${xl('form', '', 'All your openings in Form')}</p>` : ''}${skGames(s, W)}</div>` : '');
-    }).join('');
-    $('sk-note').textContent = `Typical is from ${fmt(Q.groups.reduce((s, g) => s + bench[g.tc].n, 0))} ${W.site} player-games in ${Q.groups.length > 1 ? 'these time controls' : Q.groups[0].tc}, analysed the same way${Q.atEdge ? '; your rating is outside the range they cover, so it is compared with the nearest they have' : ''}${Q.groups.some(g => g.tc === 'daily') ? '. Daily games have no clock numbers, and typical for daily rests on few games, so treat it as rough' : ''}. Opp. is your opponents in these games. A big mistake gives away 15% or more of your winning chances. These are estimates: small gaps can be chance.`;
+    // v2: Opening / Middle / Endgame / Clock. Each phase: a summary line, its skill bars, then one insight per stat that opens to the full numbers
+    const PH = { Opening: ['opening'], Middle: ['tactics', 'convert'], Endgame: ['endgame', 'save'], Clock: ['time'] }, phase = PH[skPhase] ? skPhase : 'Opening';
+    // crc: the skill bars are insight lines now ("you are about level with players your rating in tactics")
+    const skItems = skItemsOf(list, W);
+    const ks = Object.keys(PH), Y = typeof CRS_SX !== 'undefined' ? CRS_SX.summarize(use) : null;
+    $('sk-rows').innerHTML = `<div class="st-tabs sx-ph" role="radiogroup" aria-label="Game phase"><i class="thumb" aria-hidden="true" style="transform:translateX(${ks.indexOf(phase) * 100}%)"></i>${ks.map(k => `<button type="button" role="radio" data-ph="${k}" aria-checked="${k === phase}">${k}</button>`).join('')}</div>`
+      + (typeof CRS_SXUI !== 'undefined' ? CRS_SXUI.skills(Q, Y && Y.n ? Y : null, W, phase, sxOpen, skItems, use, opSide) : '');
+    $('sk-note').hidden = true; void `Typical is from ${fmt(Q.groups.reduce((s, g) => s + bench[g.tc].n, 0))} ${W.site} player-games in ${Q.groups.length > 1 ? 'these time controls' : Q.groups[0].tc}, analysed the same way${Q.atEdge ? '; your rating is outside the range they cover, so it is compared with the nearest they have' : ''}${Q.groups.some(g => g.tc === 'daily') ? '. Daily games have no clock numbers, and typical for daily rests on few games, so treat it as rough' : ''}. Opp. is your opponents in these games. A big mistake gives away 15% or more of your winning chances. These are estimates: small gaps can be chance.`;
   }
   async function skLoad(p) { try { const k = p === 'li' ? 'crsSk_li' : 'crsSk_cc'; skRows[p] = (await chrome.storage.local.get(k))[k] || null; } catch (e) {} if (lens === 'skills' || lens === 'ins') paint(); }
 
@@ -318,8 +357,17 @@
     const can = !!(it.more || it.to), open = can && siOpen.has(it.k);
     const head = `${svg(it.ic, 'si-ic ' + (it.tone || ''))}<span class="si-t">${it.head}</span>`;
     return `<div class="si-it">` + (can ? `<button type="button" class="si-h" data-si="${it.k}" aria-expanded="${open}">${head}<svg class="si-ch" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>` : `<div class="si-h">${head}</div>`)
-      + (open ? `<div class="si-m">${it.more || ''}${it.to ? `<p>${xl(it.to, it.open || '', it.to === 'form' ? 'See it in Form' : it.to === 'skills' ? 'See it in Skills' : 'See it in Cheaters')}</p>` : ''}</div>` : '') + '</div>';
+      + (open ? `<div class="si-m">${it.more || ''}${it.to ? `<p>${xl(it.to, it.open || '', it.to === 'form' ? 'See it in Profile' : it.to === 'skills' ? 'See it in Skills' : 'See it in Cheaters')}</p>` : ''}</div>` : '') + '</div>';
   };
+  // "You scored 50.6% in your blitz games this month (212 games)." Over every game in the range, not only the analysed ones
+  // A1 and B1: your score with typical from your colour mix (White scores 53.3%), coloured at 3 points like the colour lines
+  function typicalOf(P) { const nw = tot3(P.cw || [0, 0, 0]), nb = tot3(P.cb || [0, 0, 0]); return nw + nb ? (nw * WHITE_SCORE + nb * (1 - WHITE_SCORE)) / (nw + nb) : .5; }
+  function overallLine(P) {
+    if (!P || !P.cw || !P.cb) return null; const w = [0, 1, 2].map(i => P.cw[i] + P.cb[i]), n = tot3(w); if (!n) return null;
+    const tc = tcPick !== 'all' ? tcPick + ' ' : '', lab = (RANGES[range] || {}).label || '', me = score3(w), typ = typicalOf(P), c = me - typ >= .03 ? 'up' : me - typ <= -.03 ? 'down' : '', sc = (100 * me).toFixed(1) + '%';
+    const where = /^your last /.test(lab) ? `in ${lab.replace(/ games$/, ` ${tc}games`)}` : lab === 'your whole career' ? `in your ${tc}games across your whole career` : `in your ${tc}games ${lab}`;
+    return { tone: c, head: `You scored <b class="${c}">${sc}</b> ${where} (${/^your last /.test(lab) ? '' : fmt(n) + ' games: '}${fmt(w[0])} won, ${fmt(w[1])} drawn, ${fmt(w[2])} lost). Typical is ${Math.round(typ * 100)}%.` };
+  }
   function renderInsights(P, cheat) {
     const bench = typeof CRS_SKBENCH !== 'undefined' ? CRS_SKBENCH[sel] : null, use = skUse(), noBench = tcPick !== 'all' && !(bench && bench[tcPick]);
     const Q = SK && bench && !noBench && use.length >= SK.MIN_GAMES ? SK.report(use, bench) : null;
@@ -329,6 +377,10 @@
     $('si-line').hidden = !$('si-line').textContent;
     const all = [...top, ...insights(P, Q, gaps), ...(Q ? skInsights(Q, WORDS[sel], gaps) : []), ...(cheat || [])], items = all.filter(it => !it.calm), calm = all.filter(it => it.calm);
     // the ones that came out normal for you share one line at the end
+    if (typeof CRS_SXUI !== 'undefined') {      // v2: weaknesses, strengths, on par, your style
+      const Y = typeof CRS_SX !== 'undefined' ? CRS_SX.summarize(use) : null, st = CRS_SXUI.style(P, use, Y && Y.n ? Y : null, sxOpen);
+      $('si-body').innerHTML = CRS_SXUI.insights(all, Q, Y && Y.n ? Y : null, WORDS[sel], sxOpen, { rows: use, gm: st && st.gm, overall: overallLine(P), bench: noBench ? null : bench }); return;
+    }
     if (calm.length) items.push({ k: 'calm', ic: 'check', head: `Not holding you back: ${calm.map(c => c.calm).join(', ')}.`, more: calm.map(c => `<p>${c.line}</p>`).join('') });
     $('si-body').innerHTML = items.map(siItem).join('');
   }
@@ -386,18 +438,19 @@
     $('st-rhint').hidden = !RANGES[range].hint || !!(P || t) || loading;
 
     // results
-    const show = has && (lens === 'form' || lens === 'ins' ? !!P : lens === 'skills' ? true : !!t);
+    const show = has && (lens === 'form' || lens === 'ins' || lens === 'train' ? !!P : lens === 'skills' ? true : !!t);
     $('st-out').hidden = !has;
     $('st-skel').hidden = !(loading && !show);
     const tcAny = tcPick !== 'all', tcOn = tcAny && range === 'full', tT = !t ? null : !tcOn ? t : (v.tsTc && v.tsTc[range] && v.tsTc[range][tcPick]) || null, fEmpty = tcOn && P && !(P.by || {})[tcPick], cEmpty = tcOn && t && !tT;
     if (!loading && (((lens === 'form' || lens === 'ins') && fEmpty) || (lens === 'cheat' && cEmpty))) $('st-line2').textContent = lens === 'cheat' && !(v.tsTc && v.tsTc[range]) ? 'Clear saved results and search again to filter this by time control.' : `No ${tcPick} games in ${RANGES[range].label}.`;
     const insOk = !!(P && !fEmpty);
-    $('st-form').hidden = lens !== 'form' || !P || fEmpty; $('st-cheat').hidden = lens !== 'cheat' || !t || cEmpty; $('st-skills').hidden = lens !== 'skills'; $('st-instab').hidden = lens !== 'ins' || !insOk;
+    $('st-form').hidden = lens !== 'form' || !P || fEmpty; $('st-cheat').hidden = lens !== 'cheat' || !t || cEmpty; $('st-skills').hidden = lens !== 'skills'; $('st-instab').hidden = lens !== 'ins' || !insOk; $('st-train').hidden = lens !== 'train' || !P || fEmpty;
     if (!has) return;
     const cv = tT && (tcAny ? { ...v, ...(v.recBy && v.recBy[tcPick] || { recN: 0, covered: 0, oldest: 0, inWin: 0, rec: [] }) } : v), cP = tcOn ? P && (P.by || {})[tcPick] : P;
     if (P && !fEmpty && lens === 'form') { renderForm(P); if (range === 'full' && v.fullComplete === false) $('sf-what').textContent += ' so far'; }
     if (tT && lens === 'cheat') renderCheat(cv, tT, W, cP);
     if (lens === 'skills') renderSkills();
+    if (P && !fEmpty && lens === 'train') $('st-train').innerHTML = typeof CRS_SXUI !== 'undefined' && CRS_SXUI.train ? CRS_SXUI.train(SK ? skUse() : [], sxOpen, WORDS[sel]) : '';
     if (insOk && lens === 'ins') renderInsights(cP, tT ? cheatIns(cv, tT, W, cP) : '');
   }
 
@@ -419,6 +472,39 @@
   }
   $('st-site-sel').addEventListener('change', e => { sel = e.target.value; prefs(); paint(); if (!saved(sel)) $('st-user-' + sel).focus(); });
   $('st-search').onclick = () => search(sel);
+  // 7A: save the style card as a PNG (drawn here, nothing uploaded)
+  { const logo = new Image(); logo.src = 'icons/icon128.png';
+    $('st-form').addEventListener('click', e => { const bt = e.target.closest('[data-save]'); if (!bt || !shareData || typeof CRS_SXUI === 'undefined') return;
+      const rd = CRS_SXUI.radarData(shareData.Y), u = shareData.use; if (!rd || !u.length) return;
+      const who = (skRows[sel] && skRows[sel].user) || '', wide = bt.dataset.save === 'wide';
+      const cv = CRS_SXUI.shareCard(wide ? 1200 : 1080, wide ? 630 : 1080, { user: who, site: WORDS[sel].site, gm: shareData.gm, me: rd.me, th: rd.th, n: u.length, from: u[u.length - 1].t, to: u[0].t }, logo);
+      const a = document.createElement('a'); a.download = `chess-risk-style-${(who || 'me').replace(/[^\w-]/g, '')}-${wide ? 'wide' : 'square'}.png`; a.href = cv.toDataURL('image/png'); document.body.appendChild(a); a.click(); a.remove(); }); }
+  // playable quiz board: tap your piece then a square, or drag it; the right move solves it, a wrong one bounces back
+  { let from = null, drag = null, ghost = null, moved = false;
+    const mineOf = bd => bd.dataset.side === 'w' ? 'pw' : 'pb', msgOf = bd => bd.parentElement.querySelector('.qz-msg');
+    const tryMove = (bd, f, t) => { const mine = mineOf(bd), msg = msgOf(bd), ok = f.dataset.sq + t.dataset.sq === bd.dataset.best; f.classList.remove('sel', 'drag');
+      const pc = f.innerHTML, taken = t.innerHTML, tcls = t.className; t.innerHTML = pc; t.classList.remove('pw', 'pb'); t.classList.add(mine); f.innerHTML = ''; f.classList.remove(mine);
+      if (ok) { msg.textContent = ''; sxOpen.add('qz:s' + bd.dataset.k); setTimeout(paint, 450); return; }
+      msg.textContent = 'Not the best move. Try again, or tap Show the answer.';
+      setTimeout(() => { f.innerHTML = pc; f.classList.add(mine); t.innerHTML = taken; t.className = tcls; }, 700); };
+    const sqAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest('.qb.play [data-sq]'); };
+    sfBoth('pointerdown', e => { const sq = e.target.closest('.qb.play [data-sq]'); if (!sq) return; const bd = sq.closest('.qb');
+      if (!sq.classList.contains(mineOf(bd))) return; drag = { bd, sq, x: e.clientX, y: e.clientY }; moved = false; }, true);
+    window.addEventListener('pointermove', e => { if (!drag) return; if (!moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+      if (!moved) { moved = true; if (from) { from.classList.remove('sel'); from = null; } ghost = document.createElement('div'); ghost.className = 'qdrag ' + mineOf(drag.bd); ghost.innerHTML = drag.sq.innerHTML; document.body.appendChild(ghost); drag.sq.classList.add('drag'); }
+      ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px'; });
+    window.addEventListener('pointerup', e => { if (!drag) return; const d = drag; drag = null; if (!moved) return; if (ghost) { ghost.remove(); ghost = null; } d.sq.classList.remove('drag');
+      const t = sqAt(e.clientX, e.clientY); if (t && t !== d.sq && t.closest('.qb') === d.bd && !t.classList.contains(mineOf(d.bd))) tryMove(d.bd, d.sq, t); });
+    sfBoth('click', e => { const sq = e.target.closest('.qb.play [data-sq]'); if (!sq) return; e.stopPropagation(); if (moved) { moved = false; return; }
+      const bd = sq.closest('.qb'), mine = mineOf(bd), msg = msgOf(bd);
+      if (!from) { if (!sq.classList.contains(mine)) { msg.textContent = 'Tap one of your own pieces first.'; return; } from = sq; sq.classList.add('sel'); msg.textContent = ''; return; }
+      if (sq === from) { from.classList.remove('sel'); from = null; return; }
+      if (sq.classList.contains(mine)) { from.classList.remove('sel'); from = sq; sq.classList.add('sel'); return; }
+      const f = from; from = null; tryMove(bd, f, sq); }, true); }
+  function sfBoth(t, f, o) { for (const id of ['sf-prof', 'sf-styletop', 'st-train']) $(id).addEventListener(t, f, o); }      // the playable boards live in both
+  sfBoth('click', e => { const t = e.target.closest('[data-tg]'); if (t) { const k = t.dataset.tg; sxOpen.has(k) ? sxOpen.delete(k) : sxOpen.add(k); paint(); } });
+  { const tog = e => { const l = e.target.closest('#st-form .lbl.t-head'); if (!l || (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); const k = l.textContent.trim(); pfShut.has(k) ? pfShut.delete(k) : pfShut.add(k); prefs(); pfApply(); };
+    $('st-form').addEventListener('click', tog); $('st-form').addEventListener('keydown', tog); }
   $('sf-opside').addEventListener('click', e => { const k = e.target.dataset && e.target.dataset.side; if (k) { opSide = k; prefs(); paint(); } });
   $('st-tc-sel').addEventListener('change', e => { tcPick = e.target.value; prefs(); paint(); });
   $('st-range-sel').addEventListener('change', e => { range = e.target.value; prefs(); paint(); });
@@ -432,9 +518,9 @@
   $('st-clear').onclick = () => { if (!clearArmed) { clearArmed = 1; paint(); setTimeout(() => { clearArmed = 0; paint(); }, 4000); } else { clearArmed = 0; send({ type: 'hist-clear', p: sel }); send({ type: 'sk-clear', p: sel }); } };
   $('st-reload').onclick = () => chrome.runtime.reload();
   // links between the tabs: Form asks what happened, Skills asks why, Cheaters asks whether it was fair
-  $('st-out').addEventListener('click', e => { const b = e.target.closest('[data-goto]'); if (!b) return; lens = b.dataset.goto; if (b.dataset.open) skOpen = b.dataset.open; prefs(); paint(); enter(); $('st-lens').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
-  $('si-body').addEventListener('click', e => { const b = e.target.closest('[data-si]'); if (b) { const k = b.dataset.si; siOpen.has(k) ? siOpen.delete(k) : siOpen.add(k); paint(); } });
-  $('sk-rows').addEventListener('click', e => { const b = e.target.closest('[data-sk]'); if (b) { skOpen = skOpen === b.dataset.sk ? '' : b.dataset.sk; paint(); } });
+  $('st-out').addEventListener('click', e => { const b = e.target.closest('[data-goto]'); if (!b) return; lens = b.dataset.goto; if (b.dataset.open) { if (b.dataset.open.startsWith('phase:')) skPhase = b.dataset.open.slice(6); else if (b.dataset.open.startsWith('row:')) sxOpen.add(b.dataset.open.slice(4)); else skOpen = b.dataset.open; } prefs(); paint(); enter(); $('st-lens').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+  $('si-body').addEventListener('click', e => { const t = e.target.closest('[data-tg]'); if (t) { const k = t.dataset.tg; sxOpen.has(k) ? sxOpen.delete(k) : sxOpen.add(k); paint(); return; } const b = e.target.closest('[data-si]'); if (b) { const k = b.dataset.si; siOpen.has(k) ? siOpen.delete(k) : siOpen.add(k); paint(); } });
+  $('sk-rows').addEventListener('click', e => { const sd = e.target.closest('[data-side]'); if (sd) { opSide = sd.dataset.side; prefs(); paint(); return; } const ph = e.target.closest('[data-ph]'); if (ph) { skPhase = ph.dataset.ph; prefs(); paint(); return; } const t = e.target.closest('[data-tg]'); if (t) { const k = t.dataset.tg; sxOpen.has(k) ? sxOpen.delete(k) : sxOpen.add(k); paint(); return; } const b = e.target.closest('[data-sk]'); if (b) { skOpen = skOpen === b.dataset.sk ? '' : b.dataset.sk; paint(); } });
   try {
     chrome.storage.onChanged.addListener((ch, area) => {
       if (area !== 'local') return;
@@ -445,7 +531,7 @@
   } catch (e) {}
   setInterval(() => { if (starting) paint(); }, 1000);
   (async () => {
-    try { const o = await chrome.storage.local.get([KEYS.cc, KEYS.li, PREF, 'crsSkRun', 'crsSk_cc', 'crsSk_li']); R.cc = o[KEYS.cc] || null; R.li = o[KEYS.li] || null; sk = o.crsSkRun || null; skRows.cc = o.crsSk_cc || null; skRows.li = o.crsSk_li || null; const pr = o[PREF] || {}; if (RANGES[pr.range]) range = pr.range; if (['ins', 'form', 'skills', 'cheat'].includes(pr.lens)) lens = pr.lens; if (['all', 'rapid', 'blitz', 'bullet', 'daily'].includes(pr.tc)) tcPick = pr.tc; if (['all', 'w', 'b'].includes(pr.side)) opSide = pr.side; if (pr.site === 'cc' || pr.site === 'li') sel = pr.site; else if (!saved('cc') && saved('li')) sel = 'li'; } catch (e) {}
+    try { const o = await chrome.storage.local.get([KEYS.cc, KEYS.li, PREF, 'crsSkRun', 'crsSk_cc', 'crsSk_li']); R.cc = o[KEYS.cc] || null; R.li = o[KEYS.li] || null; sk = o.crsSkRun || null; skRows.cc = o.crsSk_cc || null; skRows.li = o.crsSk_li || null; const pr = o[PREF] || {}; if (RANGES[pr.range]) range = pr.range; if (['ins', 'form', 'skills', 'train', 'cheat'].includes(pr.lens)) lens = pr.lens; if (['all', 'rapid', 'blitz', 'bullet', 'daily'].includes(pr.tc)) tcPick = pr.tc; if (['all', 'w', 'b'].includes(pr.side)) opSide = pr.side; if (['Opening', 'Middle', 'Endgame', 'Clock'].includes(pr.phase)) skPhase = pr.phase; if (Array.isArray(pr.shut)) pfShut = new Set(pr.shut.map(String)); if (pr.site === 'cc' || pr.site === 'li') sel = pr.site; else if (!saved('cc') && saved('li')) sel = 'li'; } catch (e) {}
     paint();
     send({ type: 'hist-ping' });
   })();

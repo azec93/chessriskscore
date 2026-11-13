@@ -1,7 +1,7 @@
 // ============================================================
 // MY CHEATER STATS: the scan itself, for Chess.com ('cc') and Lichess ('li'). Runs in the background script, so it carries on
 // when the popup is closed. Opt-in: nothing is requested until the popup sends 'hist-search' or 'hist-start'.
-//   Ranges:  a number of games (g50, recent = 100 by default, g250, g500, medium = 1,000), a period (d7, d30, d90, d365) or full = your whole career.
+//   Ranges:  a number of games (g50, recent = 100 by default, g250, g500, medium = 1,000), a period (d7, d30, d90, d365, or today d1, this week wk, this month mo) or full = your whole career.
 //   Chess.com: api.chess.com, one or two requests at a time, 429 back-off. Status "closed:fair_play_violations" = banned for cheating.
 //   Lichess:   lichess.org/api, ONE request at a time, 429 = wait a minute. Lichess only answers game-export requests that come from
 //              its own pages, so the games are downloaded by src/histBridge.js on an open lichess.org tab; opponents are then looked
@@ -77,7 +77,7 @@ const CRS_HISTENG = (() => {
   const keyOf = (mode, tc) => tc && tc !== 'all' ? mode + '|' + tc : mode;       // "recent|rapid" = the last 100 rapid games
   function sample(S, mode, rows, tc) {
     const fill = (k, list) => { const key = keyOf(k, tc); S.ags[key] = H.addRows({}, list); S.perf[key] = H.perfRows(list); };
-    if (DAYS[mode]) fill(mode, rows); else for (const k in SIZE) if (SIZE[k] <= SIZE[mode]) fill(k, rows.slice(0, SIZE[k]));
+    if (H.daysOf(mode)) fill(mode, rows); else for (const k in SIZE) if (SIZE[k] <= SIZE[mode]) fill(k, rows.slice(0, SIZE[k]));
     const seen = new Set(rows.map(r => r.k + r.t));
     S.rc = [...rows, ...S.rc.filter(r => !seen.has(r.k + r.t))].sort((a, b) => b.t - a.t).slice(0, 300);
     return S.ags[keyOf(mode, tc)];
@@ -95,7 +95,7 @@ const CRS_HISTENG = (() => {
     let all;
     if (!full) {
       // a sample: read the newest months one at a time until there are enough games, or the period is covered
-      const want = SIZE[mode] || Infinity, cutoff = DAYS[mode] ? Date.now() / 1000 - DAYS[mode] * 86400 : 0, cutMonth = cutoff ? H.nowMonth(cutoff * 1000) : '';
+      const want = SIZE[mode] || Infinity, cutoff = H.daysOf(mode) ? Date.now() / 1000 - H.daysOf(mode) * 86400 : 0, cutMonth = cutoff ? H.nowMonth(cutoff * 1000) : '';
       let rows = [], n = 0;
       for (const url of urls) {
         if (sig.aborted || (cutoff && H.monthKey(url) < cutMonth)) break;
@@ -194,7 +194,7 @@ const CRS_HISTENG = (() => {
     let all;
     if (!full) {
       const rows = []; let n = 0, size = SIZE[mode];
-      const r = await streamGames(user, (size ? `max=${size}` : `since=${Date.now() - DAYS[mode] * 86400e3}`) + (tc === 'all' ? '' : `&perfType=${H.LI_PERF[tc]}`), sig, g => { const row = rowLi(user, g); if (row && (tc === 'all' || H.tcGroup(row.tc) === tc)) rows.push(row); if (++n % 25 === 0) set(x, 'READING GAMES', size ? Math.min(24, n / size * 25) : 25 * (1 - Math.exp(-n / 1000)), `Reading your games: ${fmt(n)} so far…`); });
+      const r = await streamGames(user, (size ? `max=${size}` : `since=${Date.now() - H.daysOf(mode) * 86400e3}`) + (tc === 'all' ? '' : `&perfType=${H.LI_PERF[tc]}`), sig, g => { const row = rowLi(user, g); if (row && (tc === 'all' || H.tcGroup(row.tc) === tc)) rows.push(row); if (++n % 25 === 0) set(x, 'READING GAMES', size ? Math.min(24, n / size * 25) : 25 * (1 - Math.exp(-n / 1000)), `Reading your games: ${fmt(n)} so far…`); });
       if (bad(r)) return;
       all = sample(S, mode, rows, tc);
       set(x, 'CHECKING OPPONENTS', 50, 'Your games are read. Now checking opponents…'); await write(x, true);
@@ -279,9 +279,9 @@ const CRS_HISTENG = (() => {
 
   function handle(msg) {
     if (!msg || typeof msg.type !== 'string' || msg.type.slice(0, 5) !== 'hist-') return false;
-    const p = msg.p === 'li' ? 'li' : 'cc', mode = msg.mode === 'full' || SIZE[msg.mode] || DAYS[msg.mode] ? msg.mode : 'recent', tc = H.LI_PERF[msg.tc] ? msg.tc : 'all';
+    const p = msg.p === 'li' ? 'li' : 'cc', mode = msg.mode === 'full' || SIZE[msg.mode] || H.daysOf(msg.mode) ? msg.mode : 'recent', tc = H.LI_PERF[msg.tc] ? msg.tc : 'all';
     if (msg.type === 'hist-user') setUser(p, msg.user);
-    else if (msg.type === 'hist-search') setUser(p, msg.user).then(async ok => { if (!ok && msg.user) return; await scan(p, mode, tc); if (X[p].prog.state === 'FINISHED' && typeof CRS_SKENG !== 'undefined') CRS_SKENG.handle({ type: 'sk-start', p, user: X[p].S.user, n: SIZE[mode] || 1000, days: DAYS[mode] || 0, tc }); });
+    else if (msg.type === 'hist-search') setUser(p, msg.user).then(async ok => { if (!ok && msg.user) return; await scan(p, mode, tc); if (X[p].prog.state === 'FINISHED' && typeof CRS_SKENG !== 'undefined') CRS_SKENG.handle({ type: 'sk-start', p, user: X[p].S.user, n: SIZE[mode] || 1000, days: H.daysOf(mode) || 0, tc }); });
     else if (msg.type === 'hist-start') scan(p, mode, tc);
     else if (msg.type === 'hist-pause') { if (run) run.ctl.abort(); }
     else if (msg.type === 'hist-stop') { if (run) { run.stop = true; run.ctl.abort(); } else stopPaused(p); }

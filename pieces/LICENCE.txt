@@ -1,0 +1,1 @@
+Chess pieces and board colours: drawn for Chess Risk Score (slate board, angular pieces), by az_93. Part of this project, under its licence.

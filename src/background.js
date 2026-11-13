@@ -12,7 +12,7 @@ try {
 
 // My cheater stats: the scan runs here so it carries on when the popup is closed. Chrome loads the two files with importScripts;
 // Firefox lists them before this file in its background scripts. Nothing runs until the popup sends a message.
-try { if (typeof importScripts === 'function') importScripts('../history-core.js', 'historyEngine.js', '../skills-core.js', 'skillsEngine.js'); } catch (e) { console.warn('[ChessRisk] stats engine not loaded', e); }
+try { if (typeof importScripts === 'function') importScripts('../history-core.js', 'historyEngine.js', '../skills-core.js', '../stats-core.js', 'skillsEngine.js'); } catch (e) { console.warn('[ChessRisk] stats engine not loaded', e); }
 if (typeof CRS_HISTENG !== 'undefined') CRS_HISTENG.init();
 if (typeof CRS_SKENG !== 'undefined') CRS_SKENG.init();
 

@@ -9,7 +9,7 @@ const CRS_HIST = (() => {
   const DRAWS = new Set(['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient']);
   const FINAL = new Set(['c', 'x']);
   const HOUR = 3600e3;
-  const PROTO = 9;   // raise whenever the background scan changes: the popup compares this with what the running background script reports
+  const PROTO = 21;   // raise whenever the background scan changes: the popup compares this with what the running background script reports
 
   const resultOf = code => code === 'win' ? 'w' : DRAWS.has(code) ? 'd' : 'l';
   // c = closed for cheating, x = closed for another or unknown reason, o = open
@@ -155,6 +155,17 @@ const CRS_HIST = (() => {
     return { rows, flag: rows.filter(r => r.z >= HAB_Z).sort((a, b) => b.z - a.z)[0] || null };
   }
 
-  return { PROTO, tcGroup, LI_PERF, opFamily, HOW, perfNew, perfAdd, perfFlow, perfRows, perfDone, perfMerge, habits, score, resultOf, statusCode, monthKey, nowMonth, gameId, gamesOf, addRows, merge, setStatus, toCheck, summarize, recentCheaterGames, HOUR };
+  const PERIODS = { d7: 7, d30: 30, d90: 90, d180: 182, d365: 365 };
+  // a range as a number of days; today, this week and this month count from local midnight, Monday and the 1st
+  function daysOf(mode, now = Date.now()) {
+    if (PERIODS[mode]) return PERIODS[mode];
+    const d = new Date(now); let start;
+    if (mode === 'd1') start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    else if (mode === 'wk') { start = new Date(d.getFullYear(), d.getMonth(), d.getDate()); start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); }
+    else if (mode === 'mo') start = new Date(d.getFullYear(), d.getMonth(), 1);
+    else return 0;
+    return Math.max(1 / 1440, (now - start.getTime()) / 86400e3);
+  }
+  return { PROTO, daysOf, tcGroup, LI_PERF, opFamily, HOW, perfNew, perfAdd, perfFlow, perfRows, perfDone, perfMerge, habits, score, resultOf, statusCode, monthKey, nowMonth, gameId, gamesOf, addRows, merge, setStatus, toCheck, summarize, recentCheaterGames, HOUR };
 })();
 if (typeof module !== 'undefined') module.exports = CRS_HIST;

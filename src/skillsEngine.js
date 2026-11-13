@@ -98,7 +98,7 @@ const CRS_SKENG = (() => {
   }
   function handle(msg) {
     if (!msg || typeof msg.type !== 'string' || msg.type.slice(0, 3) !== 'sk-') return false;
-    if (msg.type === 'sk-start') start(msg.p === 'li' ? 'li' : 'cc', String(msg.user || ''), [50, 100, 250, 500, 1000].includes(msg.n) ? msg.n : 100, CRS_HIST.LI_PERF[msg.tc] ? msg.tc : 'all', [7, 30, 90, 365].includes(msg.days) ? msg.days : 0);
+    if (msg.type === 'sk-start') start(msg.p === 'li' ? 'li' : 'cc', String(msg.user || ''), [50, 100, 250, 500, 1000].includes(msg.n) ? msg.n : 100, CRS_HIST.LI_PERF[msg.tc] ? msg.tc : 'all', msg.days > 0 && msg.days <= 366 ? msg.days : 0);
     else if (msg.type === 'sk-stop') stop();
     else if (msg.type === 'sk-clear') clear(msg.p === 'li' ? 'li' : 'cc');
     else if (msg.type === 'sk-row') row(msg.row, msg.id);

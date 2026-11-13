@@ -13,13 +13,15 @@ const CRS_SKHOST = (() => {
     return {
       kill: () => w.terminate(),
       async init() { let a = until(/^uciok/); w.postMessage('uci'); await a; w.postMessage('setoption name Threads value 1'); w.postMessage('setoption name Hash value 32'); a = until(/^readyok/); w.postMessage('isready'); await a; w.postMessage('ucinewgame'); },
+      // Clears the engine's memory. Done before every game, so a game gets the same result whichever games were analysed before it.
+      async newgame() { w.postMessage('ucinewgame'); const a = until(/^readyok/); w.postMessage('isready'); await a; },
       analyse(fen, depth) {
         return new Promise((res, rej) => {
           let last = null; const t = setTimeout(() => rej(new Error('The engine stopped answering.')), 120000);
           on = l => {
             if (/^ERROR/.test(l)) { clearTimeout(t); on = null; rej(new Error(l)); }
             else if (l.startsWith('info') && / score /.test(l) && !/ lowerbound| upperbound/.test(l)) { const m = / score (cp|mate) (-?\d+)/.exec(l); if (m) last = m; }
-            else if (l.startsWith('bestmove')) { clearTimeout(t); on = null; let v = 0; if (last) { const n = +last[2]; v = last[1] === 'cp' ? n : (n > 0 ? 10000 - n : -10000 - n); } res(fen.split(' ')[1] === 'w' ? v : -v); }
+            else if (l.startsWith('bestmove')) { clearTimeout(t); on = null; let v = 0; if (last) { const n = +last[2]; v = last[1] === 'cp' ? n : (n > 0 ? 10000 - n : -10000 - n); } const bm = (/^bestmove (\S+)/.exec(l) || [])[1] || null; res({ v: fen.split(' ')[1] === 'w' ? v : -v, bm: bm && bm !== '(none)' ? bm : null }); }
           };
           w.postMessage('position fen ' + fen); w.postMessage('go depth ' + depth);
         });
@@ -35,9 +37,10 @@ const CRS_SKHOST = (() => {
       await Promise.all(me.engines.map(async e => {
         while (next < games.length && !me.stopped) {
           const g = games[next++]; let P; try { P = SK.replay(g.san); } catch (err) { onRow(null, g.id); continue; }
-          const ev = [];
-          for (let i = 0; i < P.fens.length; i++) { if (me.stopped) return; ev.push(P.fens[i] ? await e.analyse(P.fens[i], SK.DEPTH) : P.value[i]); }
-          if (!me.stopped) onRow(SK.gameRow({ ...g, ev, pcs: P.pcs }), g.id);
+          await e.newgame(); if (me.stopped) return;
+          const ev = [], bm = [];      // bm[i] = the engine's best move in the position after move i (the reply), for the board checks in stats-core.js
+          for (let i = 0; i < P.fens.length; i++) { if (me.stopped) return; if (P.fens[i]) { const a = await e.analyse(P.fens[i], SK.DEPTH); ev.push(a.v); bm.push(a.bm); } else { ev.push(P.value[i]); bm.push(null); } }
+          if (!me.stopped) onRow(SK.gameRow({ ...g, ev, bm, pcs: P.pcs, all: P.all }), g.id);
         }
       }));
       if (!me.stopped) onEnd(null);

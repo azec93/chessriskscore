@@ -157,6 +157,42 @@ document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.dataset.view !== '0') showPage(0); });
 showPage(0);
 
+// 1.9: a NEW pill on the My stats icon until My stats is opened for the first time (user, 2026-11-09)
+(async () => {
+  const KEY = 'statsOpened', btn = document.querySelector('.nav4 [data-go="3"]'); if (!btn) return;
+  let done = null; try { done = (await chrome.storage.local.get(KEY))[KEY]; } catch (e) { return; }
+  if (done) return;
+  const pill = document.createElement('span'); pill.className = 'news-pill'; pill.textContent = 'NEW'; pill.setAttribute('aria-hidden', 'true'); btn.appendChild(pill);
+  const opened = () => { pill.remove(); try { chrome.storage.local.set({ [KEY]: true }); } catch (e) {} };
+  const show0 = showPage; showPage = i => { show0(i); if (i === 3 && pill.isConnected) opened(); };
+})();
+// 1.9 announcement (sheet with a preview): the popup dims except the My stats icon, a curved arrow draws up to it,
+// and a sheet slides up with example lines. Only the first time the popup opens after the update: it is marked seen
+// as soon as it appears, so closing the popup without tapping anything does not bring it back.
+(async () => {
+  const KEY = 'newsSeen', VER = '1.9.0', box = document.getElementById('news'), btn = document.querySelector('.nav4 [data-go="3"]');
+  if (!box || !btn) return;
+  let seen = null; try { seen = (await chrome.storage.local.get(KEY))[KEY]; } catch (e) { return; }
+  if (seen === VER) return;
+  try { await chrome.storage.local.set({ [KEY]: VER }); } catch (e) { return; }      // seen from the moment it shows
+  const hole = document.getElementById('news-hole'), arc = document.getElementById('news-arc'), sheet = document.getElementById('news-sheet');
+  const place = () => { const r = btn.getBoundingClientRect(), s = { top: window.innerHeight - sheet.offsetHeight }, pad = 4;      // the sheet's resting place, not mid-slide
+    Object.assign(hole.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + 2 * pad + 'px', height: r.height + 2 * pad + 'px' });
+    // a curve from just above the sheet, right of the icon, up to the icon's bottom edge, with an arrow head
+    const x0 = r.left + r.width / 2 + 34, y0 = s.top - 14, x1 = r.left + r.width / 2, y1 = r.bottom + pad + 6, w = 90, top = y1 - 4;
+    Object.assign(arc.style, { left: r.left - 20 + 'px', top: top + 'px', width: w + 'px', height: Math.max(20, y0 - top) + 'px' });
+    const ox = r.left - 20, X0 = x0 - ox, Y0 = y0 - top, X1 = x1 - ox, Y1 = y1 - top;
+    document.getElementById('news-arc-l').setAttribute('d', `M${X0} ${Y0} C ${X0 + 14} ${Y0 * .55}, ${X1 - 12} ${Y1 + 40}, ${X1} ${Y1}`);
+    document.getElementById('news-arc-h').setAttribute('d', `M${X1 - 6} ${Y1 + 9} L${X1} ${Y1} L${X1 + 8} ${Y1 + 6}`); };
+  const close = go => { box.hidden = true; if (go) showPage(3); };
+  box.hidden = false; requestAnimationFrame(place); window.addEventListener('resize', place);
+  document.getElementById('news-go').addEventListener('click', e => { e.stopPropagation(); close(true); });
+  document.getElementById('news-no').addEventListener('click', e => { e.stopPropagation(); close(false); });
+  sheet.addEventListener('click', e => e.stopPropagation());
+  box.addEventListener('click', e => { const r = btn.getBoundingClientRect(); close(e.clientX >= r.left - 4 && e.clientX <= r.right + 4 && e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !box.hidden) close(false); });
+})();
+
 // (i) buttons: hovering (or focusing) one shows what the setting does in a small tooltip.
 (function infoTips() {
   const tip = document.getElementById('tip');
