@@ -450,7 +450,7 @@
     if (P && !fEmpty && lens === 'form') { renderForm(P); if (range === 'full' && v.fullComplete === false) $('sf-what').textContent += ' so far'; }
     if (tT && lens === 'cheat') renderCheat(cv, tT, W, cP);
     if (lens === 'skills') renderSkills();
-    if (P && !fEmpty && lens === 'train') $('st-train').innerHTML = typeof CRS_SXUI !== 'undefined' && CRS_SXUI.train ? CRS_SXUI.train(SK ? skUse() : [], sxOpen, WORDS[sel]) : '';
+    if (P && !fEmpty && lens === 'train') $('st-train').innerHTML = typeof CRS_SXUI !== 'undefined' && CRS_SXUI.train ? CRS_SXUI.train(SK ? skUse() : [], sxOpen, WORDS[sel], trSeen) : '';
     if (insOk && lens === 'ins') renderInsights(cP, tT ? cheatIns(cv, tT, W, cP) : '');
   }
 
@@ -501,7 +501,12 @@
       if (sq === from) { from.classList.remove('sel'); from = null; return; }
       if (sq.classList.contains(mine)) { from.classList.remove('sel'); from = sq; sq.classList.add('sel'); return; }
       const f = from; from = null; tryMove(bd, f, sq); }, true); }
+  var trSeen = new Set(); try { chrome.storage.local.get('crsTrainSeen').then(o => { for (const x of (o && o.crsTrainSeen) || []) trSeen.add(x); if (lens === 'train') paint(); }); } catch (er) {}      // Train positions already shown, kept between openings
   function sfBoth(t, f, o) { for (const id of ['sf-prof', 'sf-styletop', 'st-train']) $(id).addEventListener(t, f, o); }      // the playable boards live in both
+  // Train: Next position marks the one on screen as shown (kept between openings) and moves on; Start again forgets them all
+  $('st-train').addEventListener('click', e => { const t = e.target.closest('[data-next], [data-tg="qz:reset"]'); if (!t) return; e.stopPropagation(); e.preventDefault();
+    if (t.dataset.next) trSeen.add(t.dataset.next); else trSeen.clear(); try { chrome.storage.local.set({ crsTrainSeen: [...trSeen].slice(-4000) }); } catch (er) {}
+    for (const k of [...sxOpen]) if (/^qz:[asn]\d/.test(k)) sxOpen.delete(k); paint(); }, true);
   sfBoth('click', e => { const t = e.target.closest('[data-tg]'); if (t) { const k = t.dataset.tg; sxOpen.has(k) ? sxOpen.delete(k) : sxOpen.add(k); paint(); } });
   { const tog = e => { const l = e.target.closest('#st-form .lbl.t-head'); if (!l || (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); const k = l.textContent.trim(); pfShut.has(k) ? pfShut.delete(k) : pfShut.add(k); prefs(); pfApply(); };
     $('st-form').addEventListener('click', tog); $('st-form').addEventListener('keydown', tog); }
