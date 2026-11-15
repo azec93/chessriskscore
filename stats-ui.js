@@ -521,7 +521,7 @@ const CRS_SXUI = (() => {
     // the board: you can try the engine's move when it is known for this position
     const bdP = (p, k) => { const best = (Object.entries(p.best).sort((x, y) => y[1] - x[1])[0] || [''])[0]; if (!best) return [board({ f: p.fen, b: 'a1a1', c: p.c, k }, false).replace('qb play', 'qb'), '', ''];
       const solved = open.has('qz:s' + k), show = solved || open.has('qz:a' + k), Bd = fenB(p.fen), [fr, fc] = sqI(best.slice(0, 2)), [tr, tc] = sqI(best.slice(2, 4)), pc = Bd[fr][fc];
-      return [won(board({ f: p.fen, b: best, c: p.c, k }, show, solved), open, k) + `<p class="qz-msg" aria-live="polite"></p>`, show ? ` ${solved ? '<b class="up">Correct.</b> ' : ''}The engine plays your ${PNAME[(pc || 'p').toLowerCase()]} from ${best.slice(0, 2)} ${Bd[tr][tc] ? 'taking on' : 'to'} ${best.slice(2, 4)}.` : '',
+      return [won(board({ f: p.fen, b: best, c: p.c, k, na: solved, g: glideOnce(k, show && !solved) }, show, show), open, k) + `<p class="qz-msg" aria-live="polite"></p>`, show ? ` ${solved ? '<b class="up">Correct.</b> ' : ''}The engine plays your ${PNAME[(pc || 'p').toLowerCase()]} from ${best.slice(0, 2)} ${Bd[tr][tc] ? 'taking on' : 'to'} ${best.slice(2, 4)}.` : '',
         show ? '' : `<p class="rp-try">What would the engine play here? Drag a piece, or tap it and then the square.</p><button type="button" class="qz-b" data-tg="qz:a${k}">Show the engine's move</button>`]; };
     const tbl = p => `<div class="opr h"><span>Your move</span><small></small><small>Games</small><small>W-D-L</small></div>${Object.entries(p.mv).sort((x, y) => y[1].n - x[1].n).map(([s2, m2]) => `<div class="opr"><span>${no(p, s2)}</span><small></small><small>${m2.n}</small><b>${m2.w}-${m2.d}-${m2.l}</b></div>`).join('')}`;
     const a = A.map(({ p, san, m }, j) => { const [bd, ans, tr] = bdP(p, 'rp' + j);
@@ -534,6 +534,38 @@ const CRS_SXUI = (() => {
     const S = { me: [0, 0, 0, 0], th: [0, 0, 0, 0] }; let n = 0; for (const r of rows || []) if (r.y && r.y.pw) { n++; for (const w of ['me', 'th']) r.y.pw[w].forEach((x, j) => { S[w][j] += x; }); }
     if (S.me[1] < 20 || S.th[1] < 20) return ''; const pm = 100 * S.me[0] / S.me[1], po = 100 * S.th[0] / S.th[1], mv = 100 * S.me[2] / Math.max(1, S.me[3]), t = pm - po >= 8 ? 'down' : po - pm >= 8 ? 'up' : '';
     return `<div class="tgt"><div class="hp-h"><span class="sk-gl">Your pawn moves</span><span class="hp-k">${fmt(n)} games</span></div><p class="sw">Pawn moves are ${b(P0(pm), t)} of your big mistakes and ${P0(mv)} of your moves. Your opponents: ${P0(po)} of their big mistakes. ${t === 'down' ? 'A pawn move cannot be taken back: before each one, check which squares it stops guarding.' : t === 'up' ? 'Your pawn play is safer than theirs.' : 'Pawn play is not where your games go wrong.'}</p></div>`; }
+  // ── Your opening book: your book is every position you have reached 3 times or more and the move you usually play there.
+  // Each game is read until it leaves that book: you changed your usual move, or your opponent played a reply that was new to you.
+  const BKM = { sig: '', html: '' };
+  function book(rows) {
+    const G = (rows || []).filter(r => r.y && r.y.om); if (G.length < 30) return '';
+    const sig = G.length + '|' + G.reduce((t, r) => (t + (r.t || 0)) % 1e12, 0); if (BKM.sig === sig) return BKM.html;
+    const P = {}, games = [], blank = () => ({ n: 0, w: 0, d: 0, l: 0 }), put = (o, r) => { o.n++; o[r.r]++; };
+    for (const r of G) { const san = r.y.om.split(' '), F = rpFens(r); if (!F) continue; const me0 = r.c === 'w' ? 0 : 1, keys = [];
+      for (let i = me0; i < Math.min(san.length, F.length); i += 2) { const key = (i ? F[i - 1] : START_FEN).split(' ').slice(0, 2).join(' '), p = P[key] = P[key] || { n: 0, mv: {} }; keys.push([i, key]); p.n++; p.mv[san[i]] = (p.mv[san[i]] || 0) + 1; }
+      games.push({ r, san, keys }); }
+    const usual = p => { const e = Object.entries(p.mv).sort((x, y) => y[1] - x[1])[0]; return e[1] >= 3 && e[1] / p.n >= .6 ? e : null; };
+    const line = (san, n) => san.slice(0, n).map((m, i) => (i % 2 ? '' : (i / 2 + 1) + '.') + esc(m)).join(' '), mvNo = i => Math.floor(i / 2) + 1, tag = (i, m) => `${mvNo(i)}${i % 2 ? '...' : '.'}${esc(m)}`;
+    const B = { you: blank(), opp: blank(), stay: blank() }, CH = {}, OUT = {}, dep = { w: [0, 0], b: [0, 0] };
+    for (const g of games) { let ev = null;
+      for (const [i, key] of g.keys) { const p = P[key]; if (i > 0 && p.n < 3) { ev = { t: 'opp', i: i - 1 }; break; } const u = usual(p); if (u && g.san[i] !== u[0]) { ev = { t: 'you', i, p, u }; break; } }
+      const last = g.keys.length ? g.keys[g.keys.length - 1][0] : 0, at = ev ? ev.i : last + 1; dep[g.r.c][0] += mvNo(at); dep[g.r.c][1]++;
+      if (!ev || ev.i >= 16) { put(B.stay, g.r); continue; } put(B[ev.t], g.r);
+      if (ev.t === 'you') { const k = line(g.san, ev.i) + '|' + g.san[ev.i], o = CH[k] = CH[k] || { ...blank(), i: ev.i, ln: line(g.san, ev.i), u: ev.u, pn: ev.p.n, mv: g.san[ev.i] }; put(o, g.r); }
+      else { const k = line(g.san, ev.i), o = OUT[k] = OUT[k] || { ...blank(), i: ev.i, ln: k, rep: new Set() }; put(o, g.r); o.rep.add(g.san[ev.i]); } }
+    const N = B.you.n + B.opp.n + B.stay.n; if (N < 30) return '';
+    const sc = o => o.n ? P0(100 * (o.w + o.d / 2) / o.n) : '–', seg = [['a', 'You changed your move', B.you], ['b', 'New reply from your opponent', B.opp], ['c', 'Still in your book at move 9', B.stay]];
+    const ch = Object.values(CH).filter(o => o.n >= 2).sort((x, y) => y.n - x.n || y.l - x.l).slice(0, 2), out = Object.values(OUT).filter(o => o.n >= 3 && o.i >= 1).sort((x, y) => y.n - x.n).slice(0, 2);
+    const avg = c => dep[c][1] >= 10 ? (dep[c][0] / dep[c][1]).toFixed(1) : null, aw = avg('w'), ab = avg('b');
+    const html = `<div class="bk"><div class="pf-g">Your openings</div><div class="hp-h"><span class="sk-gl">Your opening book</span><span class="hp-k">${fmt(N)} games</span></div>`
+      + `<p class="hp-b">Your book is every position you have reached 3 times or more, and the move you usually play there. Each game is followed until it leaves that book.</p>`
+      + `<div class="bk-bar">${seg.map(([c, , o]) => o.n ? `<i class="${c}" style="width:${(100 * o.n / N).toFixed(1)}%"></i>` : '').join('')}</div>`
+      + `<div class="bk-l">${seg.map(([c, nm, o]) => `<div><i class="${c}"></i><span>${nm}</span><b data-cu>${o.n}</b><small>${o.n ? `scored ${sc(o)}` : ''}</small></div>`).join('')}</div>`
+      + (aw || ab ? `<p class="sw">${aw ? `As White your games leave your book at move ${b(aw)} on average` : ''}${aw && ab ? '; as Black, at move ' + b(ab) : ab ? `As Black your games leave your book at move ${b(ab)} on average` : ''}.</p>` : '')
+      + (ch.length ? `<div class="wl-m">Moves you change</div>${ch.map(o => `<div class="bk-c"><p class="bk-ln">${o.ln || 'First move'}</p><p>You usually play ${b(tag(o.i, o.u[0]))} here (${o.u[1]} of ${o.pn} games). ${o.n === 1 ? 'Once' : o.n + ' times'} you played ${b(tag(o.i, o.mv))} instead: ${wdl(o)}.</p></div>`).join('')}` : '')
+      + (out.length ? `<div class="wl-m">Where opponents take you out</div>${out.map(o => `<div class="bk-c"><p class="bk-ln">${o.ln}</p><p>${o.n} games left your book here, with ${o.rep.size === 1 ? `the same reply, ${b(tag(o.i, [...o.rep][0]))}` : `${o.rep.size} different replies`}: ${wdl(o)}.</p></div>`).join('')}` : '')
+      + `</div>`;
+    BKM.sig = sig; BKM.html = html; return html; }
   const targeted = rows => pawnMoves(rows);
   function train(rows, open, W, seen) { open = open || new Set(); if (!rows || !rows.length) return `<p class="st-sub">Press Search first. Train uses positions from your own analysed games.</p>`;
     return `<div class="pf-g"">From your games</div>${quiz(rows, null, open, W, seen)}<div class="pf-g">From your openings</div>${repeats(rows, open)}`; }
@@ -579,14 +611,16 @@ const CRS_SXUI = (() => {
   const PCS = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }, PNAME = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
   const fenB = fen => fen.split(' ')[0].split('/').map(r => { const a = []; for (const ch of r) { if (/\d/.test(ch)) for (let i = 0; i < +ch; i++) a.push(''); else a.push(ch); } return a; });
   const sqI = q => [8 - +q[1], q.charCodeAt(0) - 97], evW = v => v >= 300 ? 'winning' : v >= 120 ? 'better' : v > -120 ? 'level' : v > -300 ? 'worse' : 'losing';
-  function board(e, show, after) { const B = fenB(e.f), flip = e.c === 'b', [fr, fc] = sqI(e.b.slice(0, 2)), [tr, tc] = sqI(e.b.slice(2, 4)); let h = '';
+  // e.g: the moved piece glides in from its old square; e.na: no arrow (a solved board); hint: light up the piece to move
+  const GL = new Set(), glideOnce = (k, on) => { k = String(k); if (!on) { GL.delete(k); return false; } if (GL.has(k)) return false; GL.add(k); return true; };
+  function board(e, show, after, hint) { const B = fenB(e.f), flip = e.c === 'b', [fr, fc] = sqI(e.b.slice(0, 2)), [tr, tc] = sqI(e.b.slice(2, 4)); let h = '';
     // after: the position once the best move is played (solved boards), with en passant, promotion and castling handled
     if (after && B[fr] && B[fr][fc]) { const pc = B[fr][fc]; if (pc.toLowerCase() === 'p' && fc !== tc && !B[tr][tc]) B[fr][tc] = ''; B[tr][tc] = e.b[4] ? (pc === 'P' ? e.b[4].toUpperCase() : e.b[4].toLowerCase()) : pc; B[fr][fc] = '';
       if (pc.toLowerCase() === 'k' && Math.abs(tc - fc) === 2) { const rf = tc > fc ? 7 : 0, rt = tc > fc ? 5 : 3; B[fr][rt] = B[fr][rf]; B[fr][rf] = ''; } }
-    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const R = flip ? 7 - r : r, C = flip ? 7 - c : c, p = B[R][C], hl = show && ((R === fr && C === fc) || (R === tr && C === tc));
-      h += `<i data-sq="${'abcdefgh'[C]}${8 - R}"${c === 0 ? ` data-r="${8 - R}"` : ''}${r === 7 ? ` data-f="${'abcdefgh'[C]}"` : ''} class="${(R + C) % 2 ? 'd' : 'l'}${p ? (p === p.toUpperCase() ? ' pw' : ' pb') : ''}${hl ? ' hl' : ''}">${p ? `<img src="pieces/${p === p.toUpperCase() ? 'w' : 'b'}${p.toUpperCase()}.svg" alt="${PNAME[p.toLowerCase()]}" draggable="false">` : ''}</i>`; }
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const R = flip ? 7 - r : r, C = flip ? 7 - c : c, p = B[R][C], hl = (show && ((R === fr && C === fc) || (R === tr && C === tc))) || (hint && !show && R === fr && C === fc), gl = after && e.g && R === tr && C === tc ? ` class="gl" style="--dx:${(fc - tc) * (flip ? -1 : 1) * 106}%;--dy:${(fr - tr) * (flip ? -1 : 1) * 106}%"` : '';
+      h += `<i data-sq="${'abcdefgh'[C]}${8 - R}"${c === 0 ? ` data-r="${8 - R}"` : ''}${r === 7 ? ` data-f="${'abcdefgh'[C]}"` : ''} class="${(R + C) % 2 ? 'd' : 'l'}${p ? (p === p.toUpperCase() ? ' pw' : ' pb') : ''}${hl ? ' hl' : ''}">${p ? `<img src="pieces/${p === p.toUpperCase() ? 'w' : 'b'}${p.toUpperCase()}.svg" alt="${PNAME[p.toLowerCase()]}" draggable="false"${gl}>` : ''}</i>`; }
     const cx = c => ((flip ? 7 - c : c) + .5) * 12.5, cy = r => ((flip ? 7 - r : r) + .5) * 12.5, ax = cx(fc), ay = cy(fr), bx = cx(tc), by = cy(tr), dl = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / dl, uy = (by - ay) / dl, hx = bx - ux * 5, hy = by - uy * 5, n2 = v => v.toFixed(1);
-    return `<div class="qb${show ? '' : ' play'}" data-best="${e.b.slice(0, 4)}" data-side="${e.f.split(' ')[1]}" data-k="${e.k}">${h}${show && !after ? `<svg viewBox="0 0 100 100" aria-hidden="true"><line x1="${n2(ax + ux * 3.5)}" y1="${n2(ay + uy * 3.5)}" x2="${n2(hx)}" y2="${n2(hy)}"/><polygon points="${n2(bx)},${n2(by)} ${n2(hx - uy * 3.2)},${n2(hy + ux * 3.2)} ${n2(hx + uy * 3.2)},${n2(hy - ux * 3.2)}"/></svg>` : ''}</div>`; }
+    return `<div class="qb${show ? '' : ' play'}" data-best="${e.b.slice(0, 4)}" data-side="${e.f.split(' ')[1]}" data-k="${e.k}">${h}${show && !e.na ? `<svg viewBox="0 0 100 100" aria-hidden="true"><line x1="${n2(ax + ux * 3.5)}" y1="${n2(ay + uy * 3.5)}" x2="${n2(hx)}" y2="${n2(hy)}"/><polygon points="${n2(bx)},${n2(by)} ${n2(hx - uy * 3.2)},${n2(hy + ux * 3.2)} ${n2(hx + uy * 3.2)},${n2(hy - ux * 3.2)}"/></svg>` : ''}</div>`; }
   const WON = new Set(), won = (h, open, k) => { k = String(k); if (!open.has('qz:s' + k)) { WON.delete(k); return h; } const first = !WON.has(k); WON.add(k);
     const m = /data-best="([a-h][1-8])([a-h])([1-8])" data-side="([wb])"/.exec(h); if (!m) return h; const flip = m[4] === 'b', f = m[2].charCodeAt(0) - 97, col = flip ? 7 - f : f, row = flip ? +m[3] - 1 : 8 - +m[3];
     return h.replace('class="qb"', `class="qb won${first ? ' go' : ''}"`).replace(/<\/div>$/, `<b class="tick" style="left:calc(${(col + 1) * 12.5}% - 15px);top:calc(${row * 12.5}% + 1px)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M6.5 12.5l3.6 3.6 7.4-7.8"/></svg></b></div>`); };
@@ -598,9 +632,9 @@ const CRS_SXUI = (() => {
     if (!L.length) return `<div class="qz"><div class="sk-gl">Find the move</div><p class="st-sub">No position saved yet. Positions are kept for games analysed from version 1.10 on: press Search to check your games again.</p></div>`;
     const e = L[seen ? 0 : [...open].filter(x => x.startsWith('qz:n')).length % L.length], k = e.k, solved = open.has('qz:s' + k), show = solved || open.has('qz:a' + k), nm = e.t.includes('mate') ? 'mate in one' : e.t.includes('better') ? 'much better move' : ((TAC[e.t[0]] && TAC[e.t[0]][0]) || e.t[0]).toLowerCase(), B = fenB(e.f), [fr, fc] = sqI(e.b.slice(0, 2)), [tr, tc] = sqI(e.b.slice(2, 4)), p = B[fr][fc], tg = B[tr][tc];
     const best = `your ${PNAME[(p || 'p').toLowerCase()]} from ${e.b.slice(0, 2)} ${tg ? 'taking on' : 'to'} ${e.b.slice(2, 4)}`;
-    return `<div class="qz"><div class="sk-gl">Find the move <span>${seen ? L0.length - L.length + 1 : k + 1} of ${L0.length}</span></div><p>From your game against ${esc(e.u)}, ${DAY(e.d)}. You are ${e.c === 'w' ? 'White' : 'Black'}${e.t.includes('mate') ? '' : ` and ${evW(e.e[0])}`}. There is a ${esc(nm)} here.${show ? '' : ' Drag your piece to its square, or tap the piece and then the square.'}</p>${won(board(e, show, solved), open, k)}<p class="qz-msg" aria-live="polite"></p>`
-      + (show ? `<p>${solved ? '<b class="up">Correct.</b> ' : ''}You played ${esc(e.p)} in the game.${e.t.includes('mate') ? ` Best was ${best}, mate in one.` : ''} ${e.t.includes('mate') ? '' : `Best was ${best}: you would have stayed ${evW(e.e[0])}. After your move the game was ${evW(e.e[1])}.`}${W ? ` <a href="${W.game(e.id)}" target="_blank" rel="noopener">Open game ›</a>` : ''}</p>` : `<button type="button" class="qz-b" data-tg="qz:a${k}">Show the answer</button>`)
-      + (L.length > 1 ? `<button type="button" class="qz-n"${seen ? ` data-next="${esc(pid(e))}"` : ''} data-tg="qz:n${[...open].filter(x => x.startsWith('qz:n')).length}">${seen ? 'Next position' : 'Another position'} ›</button>` : '') + `</div>`; }
+    return `<div class="qz"><div class="sk-gl">Find the move <span>${seen ? L0.length - L.length + 1 : k + 1} of ${L0.length}</span></div><p>From your game against ${esc(e.u)}, ${DAY(e.d)}. You are ${e.c === 'w' ? 'White' : 'Black'}${e.t.includes('mate') ? '' : ` and ${evW(e.e[0])}`}. There is a ${esc(nm)} here.${show ? '' : ' Drag your piece to its square, or tap the piece and then the square.'}</p>${won(board({ ...e, na: solved, g: glideOnce(k, show && !solved) }, show, show, open.has('qz:h' + k)), open, k)}<p class="qz-msg" aria-live="polite"></p>`
+      + (show ? `<p>${solved ? '<b class="up">Correct.</b> ' : ''}You played ${esc(e.p)} in the game.${e.t.includes('mate') ? ` Best was ${best}, mate in one.` : ''} ${e.t.includes('mate') ? '' : `Best was ${best}: you would have stayed ${evW(e.e[0])}. After your move the game was ${evW(e.e[1])}.`}${W ? ` <a href="${W.game(e.id)}" target="_blank" rel="noopener">Open game ›</a>` : ''}</p>` : `<div class="qz-2"><button type="button" class="qz-n" data-tg="qz:h${k}" aria-pressed="${open.has('qz:h' + k)}">Hint</button><button type="button" class="qz-b" data-tg="qz:a${k}">Show the answer</button></div>`)
+      + (L.length > 1 ? `<button type="button" class="qz-n${show ? ' pri' : ''}"${seen ? ` data-next="${esc(pid(e))}"` : ''} data-tg="qz:n${[...open].filter(x => x.startsWith('qz:n')).length}">${seen ? 'Next position' : 'Another position'} ›</button>` : '') + `</div>`; }
   // 7A share card: flat colour, logo, six pastel chips, radar (drawn on a canvas in the popup, nothing uploaded)
   const CHIP = ['#b9adf5', '#9fd0f2', '#93dbb4', '#f4cfa0', '#f4b3c0', '#ece08f'], AXES = ['Aggression', 'Tension', 'Speed', 'Endurance', 'Opening prep', 'Resilience'];
   function shareCard(W, H, d, logo) {
@@ -682,5 +716,5 @@ const CRS_SXUI = (() => {
     const sk = (skItems || []).filter(x => x.phase === 'Profile').map(x => ({ ...x, tip: x.tone === 'down' ? tip(x.tipKey) : '' }));
     return sk.concat(base);
   }
-  return { skills, insights, style, profile, moved, TIPS, shareCard, radarData, targeted, train };
+  return { skills, insights, style, profile, moved, TIPS, shareCard, radarData, targeted, train, book };
 })();

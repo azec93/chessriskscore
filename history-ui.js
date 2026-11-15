@@ -154,7 +154,7 @@
     habitsInto(P);
     // v2 Profile rows: game length, mates, tactics, positional themes, style, habits; each row is its key stat, tap for the table
     { const use = SK ? skUse() : [], Y = typeof CRS_SX !== 'undefined' && use.length ? CRS_SX.summarize(use) : null, st = typeof CRS_SXUI !== 'undefined' ? CRS_SXUI.style(P, use, Y && Y.n ? Y : null, sxOpen) : null, extra = [];
-      const sty = $('sf-styletop'); if (sty) { sty.hidden = !st; sty.innerHTML = st ? `<div class="pf-g">Your style</div>${st.html}${st.gm && Y && Y.n ? `<div class="sx-save"><span>Save my style as an image</span><button type="button" data-save="wide">Wide</button><button type="button" data-save="square">Square</button></div>` : ''}` : ''; sty._fill = !(st && CRS_SXUI.targeted) ? null : () => { const fill = () => { const tg = $('sf-tgt'); if (tg) { tg.innerHTML = CRS_SXUI.targeted(skUse(), sxOpen); sty.dataset.warm = '1'; } }; sty.dataset.warm ? fill() : setTimeout(fill, 40); }; shareData = st && st.gm && Y && Y.n ? { gm: st.gm, Y, use } : null; }
+      const sty = $('sf-styletop'); if (sty) { sty.hidden = !st; sty.innerHTML = st ? `<div class="pf-g">Your style</div>${st.html}${st.gm && Y && Y.n ? `<div class="sx-save"><span>Save my style as an image</span><button type="button" data-save="wide">Wide</button><button type="button" data-save="square">Square</button></div>` : ''}<div id="sf-book"></div>` : ''; sty._fill = !(st && CRS_SXUI.targeted) ? null : () => { const fill = () => { const tg = $('sf-tgt'); if (tg) { tg.innerHTML = CRS_SXUI.targeted(skUse(), sxOpen); sty.dataset.warm = '1'; } const bk = $('sf-book'); if (bk && CRS_SXUI.book) { bk.innerHTML = CRS_SXUI.book(skUse()); countUp(bk); } }; sty.dataset.warm ? fill() : setTimeout(fill, 40); }; shareData = st && st.gm && Y && Y.n ? { gm: st.gm, Y, use } : null; }
       const hb = $('sf-habbox');
       if (!hb.hidden && $('sf-habits').innerHTML) { const G = H && H.habits(P), f = G && G.flag, d = f ? (f.you < f.rest ? 'down' : 'up') : '';
         extra.push({ k: 'pf-hab', tone: d, title: 'Habits', head: f ? `You score ${d === 'down' ? 'worse' : 'better'} ${HABW[f.label] || esc(f.label).toLowerCase()}: <b class="${d}">${Math.round(f.you * 100)}%</b>, against ${Math.round(f.rest * 100)}% in your other games.` : 'Your results hold steady: after a win or a loss, early or late in a sitting and at any time of day, nothing differs by more than luck would explain.',
@@ -482,8 +482,9 @@
   // playable quiz board: tap your piece then a square, or drag it; the right move solves it, a wrong one bounces back
   { let from = null, drag = null, ghost = null, moved = false;
     const mineOf = bd => bd.dataset.side === 'w' ? 'pw' : 'pb', msgOf = bd => bd.parentElement.querySelector('.qz-msg');
-    const tryMove = (bd, f, t) => { const mine = mineOf(bd), msg = msgOf(bd), ok = f.dataset.sq + t.dataset.sq === bd.dataset.best; f.classList.remove('sel', 'drag');
+    const tryMove = (bd, f, t, dragged) => { const mine = mineOf(bd), msg = msgOf(bd), ok = f.dataset.sq + t.dataset.sq === bd.dataset.best; f.classList.remove('sel', 'drag');
       const pc = f.innerHTML, taken = t.innerHTML, tcls = t.className; t.innerHTML = pc; t.classList.remove('pw', 'pb'); t.classList.add(mine); f.innerHTML = ''; f.classList.remove(mine);
+      { const im = t.querySelector('img'); if (im && !dragged) { const a = f.getBoundingClientRect(), z = t.getBoundingClientRect(); t.classList.add('mv'); im.style.transition = 'none'; im.style.transform = `translate(${a.left - z.left}px,${a.top - z.top}px)`; void im.offsetWidth; im.style.transition = 'transform .18s cubic-bezier(.3,.7,.2,1)'; im.style.transform = ''; setTimeout(() => t.classList.remove('mv'), 220); } }      // a tapped piece glides to its square
       if (ok) { msg.textContent = ''; sxOpen.add('qz:s' + bd.dataset.k); setTimeout(paint, 450); return; }
       msg.textContent = 'Not the best move. Try again, or tap Show the answer.';
       setTimeout(() => { f.innerHTML = pc; f.classList.add(mine); t.innerHTML = taken; t.className = tcls; }, 700); };
@@ -494,7 +495,7 @@
       if (!moved) { moved = true; if (from) { from.classList.remove('sel'); from = null; } ghost = document.createElement('div'); ghost.className = 'qdrag ' + mineOf(drag.bd); ghost.innerHTML = drag.sq.innerHTML; document.body.appendChild(ghost); drag.sq.classList.add('drag'); }
       ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px'; });
     window.addEventListener('pointerup', e => { if (!drag) return; const d = drag; drag = null; if (!moved) return; if (ghost) { ghost.remove(); ghost = null; } d.sq.classList.remove('drag');
-      const t = sqAt(e.clientX, e.clientY); if (t && t !== d.sq && t.closest('.qb') === d.bd && !t.classList.contains(mineOf(d.bd))) tryMove(d.bd, d.sq, t); });
+      const t = sqAt(e.clientX, e.clientY); if (t && t !== d.sq && t.closest('.qb') === d.bd && !t.classList.contains(mineOf(d.bd))) tryMove(d.bd, d.sq, t, true); });
     sfBoth('click', e => { const sq = e.target.closest('.qb.play [data-sq]'); if (!sq) return; e.stopPropagation(); if (moved) { moved = false; return; }
       const bd = sq.closest('.qb'), mine = mineOf(bd), msg = msgOf(bd);
       if (!from) { if (!sq.classList.contains(mine)) { msg.textContent = 'Tap one of your own pieces first.'; return; } from = sq; sq.classList.add('sel'); msg.textContent = ''; return; }
@@ -506,7 +507,7 @@
   // Train: Next position marks the one on screen as shown (kept between openings) and moves on; Start again forgets them all
   $('st-train').addEventListener('click', e => { const t = e.target.closest('[data-next], [data-tg="qz:reset"]'); if (!t) return; e.stopPropagation(); e.preventDefault();
     if (t.dataset.next) trSeen.add(t.dataset.next); else trSeen.clear(); try { chrome.storage.local.set({ crsTrainSeen: [...trSeen].slice(-4000) }); } catch (er) {}
-    for (const k of [...sxOpen]) if (/^qz:[asn]\d/.test(k)) sxOpen.delete(k); paint(); }, true);
+    for (const k of [...sxOpen]) if (/^qz:[asnh]\d/.test(k)) sxOpen.delete(k); paint(); }, true);
   sfBoth('click', e => { const t = e.target.closest('[data-tg]'); if (t) { const k = t.dataset.tg; sxOpen.has(k) ? sxOpen.delete(k) : sxOpen.add(k); paint(); } });
   { const tog = e => { const l = e.target.closest('#st-form .lbl.t-head'); if (!l || (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); const k = l.textContent.trim(); pfShut.has(k) ? pfShut.delete(k) : pfShut.add(k); prefs(); pfApply(); };
     $('st-form').addEventListener('click', tog); $('st-form').addEventListener('keydown', tog); }
@@ -514,8 +515,14 @@
   $('st-tc-sel').addEventListener('change', e => { tcPick = e.target.value; prefs(); paint(); });
   $('st-range-sel').addEventListener('change', e => { range = e.target.value; prefs(); paint(); });
   // switching views: the thumb slides (CSS) and the new view fades up into place
-  const PANEL = { ins: 'st-instab', form: 'st-form', skills: 'st-skills', cheat: 'st-cheat' };
-  const enter = () => { const el = $(PANEL[lens]); if (!el) return; el.classList.remove('st-enter'); void el.offsetWidth; el.classList.add('st-enter'); };
+  const PANEL = { ins: 'st-instab', form: 'st-form', skills: 'st-skills', train: 'st-train', cheat: 'st-cheat' };
+  // numbers count up and sections rise in, only while a view is being entered (st-anim is taken off again, so later repaints stay still)
+  const calm = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return true; } };
+  function countUp(root) { const out = $('st-out'); if (!out || !out.classList.contains('st-anim') || calm()) return;
+    for (const el of root.matches && root.matches('[data-cu]') ? [root] : root.querySelectorAll('[data-cu]')) { const m = /^(\D*)([\d.]+)(.*)$/.exec(el.textContent.trim()); if (!m) continue; const to = +m[2], dp = (m[2].split('.')[1] || '').length, t0 = performance.now();
+      const step = t => { const k = Math.min(1, (t - t0) / 650), e2 = 1 - Math.pow(1 - k, 3); el.textContent = m[1] + (to * e2).toFixed(dp) + m[3]; if (k < 1 && el.isConnected) requestAnimationFrame(step); else el.textContent = m[1] + m[2] + m[3]; }; requestAnimationFrame(step); } }
+  let animT = 0;
+  const enter = () => { const el = $(PANEL[lens]); if (!el) return; el.classList.remove('st-enter'); void el.offsetWidth; el.classList.add('st-enter'); const out = $('st-out'); out.classList.add('st-anim'); clearTimeout(animT); animT = setTimeout(() => out.classList.remove('st-anim'), 1400); };
   document.querySelectorAll('#st-lens [data-l]').forEach(b => b.addEventListener('click', () => { if (lens === b.dataset.l) return; lens = b.dataset.l; prefs(); paint(); enter(); }));
   $('st-pause').onclick = () => { send({ type: 'hist-pause' }); $('st-pause').disabled = true; setTimeout(() => { $('st-pause').disabled = false; }, 700); };
   $('st-play').onclick = () => { $('st-play').disabled = true; setTimeout(() => { $('st-play').disabled = false; }, 700); search(sel); };

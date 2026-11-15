@@ -4,7 +4,7 @@
 
 A browser extension that detects your opponent and shows a 0–100 risk score with the numbers behind it, all from public data and calculated in your browser.
 
-![Version](https://img.shields.io/badge/version-1.12.0-blue) ![Platforms](https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge%20%7C%20Firefox-green) ![License](https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20engine-brightgreen)
+![Version](https://img.shields.io/badge/version-1.13.0-blue) ![Platforms](https://img.shields.io/badge/platform-Chrome%20%7C%20Brave%20%7C%20Edge%20%7C%20Firefox-green) ![License](https://img.shields.io/badge/license-MIT%20%2B%20GPL--3.0%20engine-brightgreen)
 
 ---
 
@@ -13,9 +13,9 @@ A browser extension that detects your opponent and shows a 0–100 risk score wi
 - **Works on Chess.com and Lichess:** detects the opponent when a game starts or when you watch one
 - **Risk score (0–100):** with a plain label and the full calculation in the overlay
 - **Per-format table:** wins, losses, draws, win rate, accuracy, current and peak rating
-- **My stats (rebuilt in 1.12):** look up any Chess.com or Lichess player
+- **My stats (rebuilt in 1.13):** look up any Chess.com or Lichess player
   - **Insights:** what is and isn't holding you back, each compared with typical players at your rating
-  - **You:** results and rating, your style in plain words (How you play, Who you play like), how your games go and where they go wrong
+  - **You:** results and rating, your style in plain words (How you play, Who you play like), your opening book, how your games go and where they go wrong
   - **Skills:** every game checked by Stockfish in your browser (opening, middlegame, endgame, clock)
   - **Train:** positions from your own games on a board you can play on: missed tactics and mates, and the opening moves you keep repeating
   - **Cheaters:** how many of your opponents had their accounts closed for fair play
